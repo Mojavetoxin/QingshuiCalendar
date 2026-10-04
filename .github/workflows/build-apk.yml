@@ -1,0 +1,117 @@
+# 清水日历 - APK 云构建
+#
+# 使用方法：
+#   1. 把本项目推送到 GitHub 仓库（main 或 master 分支）
+#      - 无论工程文件在仓库根目录，还是在 QingshuiCalendar/ 子文件夹里，都能定位到
+#   2. 打开仓库页面 → Actions 标签 → 首次需要点击启用
+#   3. 选择 "Build APK" → Run workflow（推送代码后也会自动构建）
+#   4. 构建完成后，在该次运行页面底部 Artifacts 区域下载 QingshuiCalendar-apk
+#   5. 下载得到 zip，解压出 QingshuiCalendar-debug.apk，传到手机安装即可
+#
+# 说明：私有仓库也可用（免费账户每月 2000 分钟构建时长，本项目一次约 5~10 分钟）
+# 注意：本 workflow 不依赖任何第三方 Android 配置 Action，
+#       直接用 Ubuntu 运行器镜像自带的 Android SDK（已含 SDK 许可），少一个故障点。
+
+name: Build APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 定位工程根目录
+        id: locate
+        shell: bash
+        run: |
+          if [ -f "settings.gradle.kts" ]; then
+            echo "dir=." >> "$GITHUB_OUTPUT"
+            echo "prefix=" >> "$GITHUB_OUTPUT"
+            echo "工程根：仓库根目录"
+          elif [ -f "QingshuiCalendar/settings.gradle.kts" ]; then
+            echo "dir=QingshuiCalendar" >> "$GITHUB_OUTPUT"
+            echo "prefix=QingshuiCalendar/" >> "$GITHUB_OUTPUT"
+            echo "工程根：QingshuiCalendar/ 子目录"
+          else
+            echo "::error title=找不到工程::仓库里既没有 settings.gradle.kts，也没有 QingshuiCalendar/settings.gradle.kts。请确认上传的是完整工程（包含 .github、app、gradle、gradlew、settings.gradle.kts 等）。"
+            exit 1
+          fi
+
+      - name: 配置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 检查 Android SDK（使用运行器预装版本，缺失组件按需补齐）
+        shell: bash
+        run: |
+          set +e
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-<空>}  ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<空>}"
+          echo "SDK 路径：$SDK"
+          echo "--- 已有 platforms ---"
+          ls "$SDK/platforms" 2>/dev/null || echo "(读取不到)"
+          echo "--- 已有 build-tools ---"
+          ls "$SDK/build-tools" 2>/dev/null || echo "(读取不到)"
+
+          # SDK 许可（Gradle 需要自动下载缺失组件时会校验；只补缺失项，写不进去就跳过）
+          mkdir -p "$SDK/licenses" 2>/dev/null
+          for f in android-sdk-license android-sdk-preview-license; do
+            if [ ! -f "$SDK/licenses/$f" ]; then
+              printf '\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n' > "$SDK/licenses/$f" 2>/dev/null
+            fi
+          done
+
+          # compileSdk 34 所需组件：缺了才补装；补装不成功也不阻断（Gradle 还会自己再试一次）
+          SDKMANAGER="$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n1)"
+          if [ -n "$SDKMANAGER" ]; then
+            echo "sdkmanager：$SDKMANAGER"
+            if [ ! -d "$SDK/platforms/android-34" ]; then
+              "$SDKMANAGER" --install "platforms;android-34" > /dev/null 2>&1 || echo "(补装 platform 34 未成功，交给 Gradle)"
+            fi
+            if [ ! -d "$SDK/build-tools/34.0.0" ]; then
+              "$SDKMANAGER" --install "build-tools;34.0.0" > /dev/null 2>&1 || echo "(补装 build-tools 34 未成功，交给 Gradle)"
+            fi
+          else
+            echo "(未找到 sdkmanager，交给 Gradle 自动下载)"
+          fi
+
+          echo "--- 检查结果 ---"
+          ls "$SDK/platforms" 2>/dev/null
+          ls "$SDK/build-tools" 2>/dev/null
+          exit 0
+
+      - name: 配置 Gradle（自动缓存依赖，第二次构建起会明显加快）
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: 赋予 gradlew 可执行权限
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: chmod +x gradlew
+
+      - name: 构建 Debug APK
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: 重命名 APK
+        shell: bash
+        run: |
+          APK="${{ steps.locate.outputs.prefix }}app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error title=构建产物缺失::没有找到 $APK，构建可能失败了。"
+            exit 1
+          fi
+          mv "$APK" QingshuiCalendar-debug.apk
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: QingshuiCalendar-apk
+          path: QingshuiCalendar-debug.apk
+          if-no-files-found: error

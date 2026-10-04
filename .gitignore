@@ -1,0 +1,15 @@
+# 构建产物
+*.iml
+.gradle/
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 本地环境（含 SDK 路径，每台机器不同，绝不能提交）
+local.properties
+
+# IDE
+.idea/
+.DS_Store

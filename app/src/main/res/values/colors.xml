@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 启动图标背景色：清水青 -->
+    <color name="ic_launcher_background">#FF2A9D8F</color>
+</resources>
