@@ -95,7 +95,7 @@ fun YearScreen(
         vm.setYear(vm.baseYear + (pagerState.currentPage - CENTER))
     }
     LaunchedEffect(year) {
-        val target = CENTER + ChronoUnit.YEARS.between(vm.baseYear, year)
+        val target = CENTER + (year - vm.baseYear)
         if (target in 0 until PAGES && pagerState.currentPage != target) {
             pagerState.animateScrollToPage(target)
         }

@@ -130,7 +130,7 @@ object RepeatExpander {
                 var y = start.year
                 var guard = 0
                 while (y <= effectiveEnd.year && out.size < MAX_OCCURRENCES && guard < 5000) {
-                    val day = if (start.month == java.time.Month.FEBRUARY && start.dayOfMonth == 29 && !Year.isLeap(y)) 28
+                    val day = if (start.month == java.time.Month.FEBRUARY && start.dayOfMonth == 29 && !Year.isLeap(y.toLong())) 28
                     else start.dayOfMonth
                     val date = LocalDate.of(y, start.month, day)
                     if (!date.isBefore(rangeStart) && !date.isAfter(effectiveEnd)) out.add(date)

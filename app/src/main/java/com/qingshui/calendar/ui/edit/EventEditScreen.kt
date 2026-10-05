@@ -401,12 +401,15 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
 // ---------------------------------------------------------------- 通用小件
 
 @Composable
-private fun FieldRow(label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun FieldRow(
+    label: String,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    val base = Modifier.fillMaxWidth()
+    val rowModifier = if (onClick != null) base.clickable(onClick = onClick) else base
     Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+        rowModifier.padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
@@ -418,8 +421,8 @@ private fun FieldRow(label: String, onClick: () -> Unit, content: @Composable ()
 private fun TimeDialog(
     title: String,
     initial: LocalTime,
-    onConfirm: (LocalTime) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onConfirm: (LocalTime) -> Unit
 ) {
     val state = rememberTimePickerState(
         initialHour = initial.hour,

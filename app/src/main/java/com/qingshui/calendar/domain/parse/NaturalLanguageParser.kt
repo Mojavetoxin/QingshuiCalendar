@@ -324,7 +324,7 @@ object NaturalLanguageParser {
 
     // ---------------------------------------------------------------- 提醒
 
-    private class Rp(val re: Regex, val calc: (MatchResult) -> Int)
+    private data class Rp(val re: Regex, val calc: (MatchResult) -> Int)
 
     private val REMINDER_PATTERNS = listOf(
         Rp(Regex("不提醒")) { -1 },
@@ -357,7 +357,7 @@ object NaturalLanguageParser {
 
     // ---------------------------------------------------------------- 相对日期
 
-    private class Rel(val re: Regex, val offset: Long, val evening: Boolean)
+    private data class Rel(val re: Regex, val offset: Long, val evening: Boolean)
 
     private val RELATIVE_PATTERNS = listOf(
         Rel(Regex("今晚(?:上)?|今天晚上|今日晚上"), 0L, true),

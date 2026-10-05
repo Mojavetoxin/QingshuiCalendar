@@ -74,6 +74,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 // ---------------------------------------------------------------- ViewModel
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MonthViewModel(private val c: AppContainer) : ViewModel() {
 
     /** 翻页基准月（与屏幕上的 Pager 共用） */
@@ -91,7 +92,6 @@ class MonthViewModel(private val c: AppContainer) : ViewModel() {
     private val _occurrences = MutableStateFlow<Map<LocalDate, List<EventOccurrence>>>(emptyMap())
     val occurrences: StateFlow<Map<LocalDate, List<EventOccurrence>>> = _occurrences.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     init {
         viewModelScope.launch {
             c.settingsRepository.settings.collect { _settings.value = it }
@@ -164,7 +164,7 @@ fun MonthScreen(
     }
     // VM → Pager（今天按钮 / 年视图跳月）
     LaunchedEffect(month) {
-        val target = CENTER + ChronoUnit.MONTHS.between(vm.baseMonth, month)
+        val target = CENTER + ChronoUnit.MONTHS.between(vm.baseMonth, month).toInt()
         if (target in 0 until PAGES && pagerState.currentPage != target) {
             pagerState.animateScrollToPage(target)
         }
