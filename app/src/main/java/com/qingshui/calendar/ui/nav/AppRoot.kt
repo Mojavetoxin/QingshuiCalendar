@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.qingshui.calendar.R
 import com.qingshui.calendar.di.AppContainer
+import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.ui.edit.EventEditScreen
 import com.qingshui.calendar.ui.edit.EventEditViewModel
 import com.qingshui.calendar.ui.importscreen.ImportScreen
@@ -45,7 +47,8 @@ import com.qingshui.calendar.ui.list.EventListScreen
 import com.qingshui.calendar.ui.list.EventListViewModel
 import com.qingshui.calendar.ui.month.MonthScreen
 import com.qingshui.calendar.ui.month.MonthViewModel
-import com.qingshui.calendar.ui.components.rememberClickFeedback
+import com.qingshui.calendar.ui.components.LocalAppFeedback
+import com.qingshui.calendar.ui.components.rememberAppFeedback
 import com.qingshui.calendar.ui.settings.SettingsScreen
 import com.qingshui.calendar.ui.settings.SettingsViewModel
 import com.qingshui.calendar.ui.year.YearScreen
@@ -82,6 +85,16 @@ private val TABS = listOf(
 
 @Composable
 fun AppRoot(c: AppContainer) {
+    // 反馈总开关随设置变化，关掉后完全不调用系统音效/触感接口
+    val settings by c.settingsRepository.settings.collectAsState(initial = AppSettings())
+    val feedback = rememberAppFeedback(settings.soundEnabled, settings.hapticEnabled)
+    CompositionLocalProvider(LocalAppFeedback provides feedback) {
+        AppScaffold(c)
+    }
+}
+
+@Composable
+private fun AppScaffold(c: AppContainer) {
     val navController = rememberNavController()
     val factory = remember { VmFactory(c) }
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -111,7 +124,7 @@ fun AppRoot(c: AppContainer) {
         }
     }
 
-    val feedback = rememberClickFeedback()
+    val feedback = LocalAppFeedback.current
 
     fun goTab(route: String) {
         navController.navigate(route) {
@@ -125,7 +138,7 @@ fun AppRoot(c: AppContainer) {
         floatingActionButton = {
             if (currentRoute == "tab_month" || currentRoute == "tab_list") {
                 FloatingActionButton(onClick = {
-                    feedback(); navController.navigate("event_edit/-1")
+                    feedback.confirm(); navController.navigate("event_edit/-1")
                 }) {
                     Icon(Icons.Filled.Add, contentDescription = "新建日程")
                 }
@@ -137,7 +150,7 @@ fun AppRoot(c: AppContainer) {
                     TABS.forEach { tab ->
                         NavigationBarItem(
                             selected = currentRoute == tab.route,
-                            onClick = { feedback(); goTab(tab.route) },
+                            onClick = { feedback.select(); goTab(tab.route) },
                             icon = {
                                 when {
                                     tab.vector != null -> Icon(tab.vector, contentDescription = tab.label)

@@ -9,16 +9,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,7 +36,9 @@ import com.qingshui.calendar.domain.calendar.CalendarUtils
 import com.qingshui.calendar.domain.calendar.LunarCalendar
 import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.ui.components.EmptyHint
+import com.qingshui.calendar.ui.components.LocalAppFeedback
 import com.qingshui.calendar.ui.month.EventRow
+import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -47,7 +49,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
 // ---------------------------------------------------------------- ViewModel
 
@@ -111,6 +112,7 @@ fun EventListScreen(
     val filter by vm.filter.collectAsState()
     val groups by vm.groups.collectAsState()
     val today = remember { LocalDate.now() }
+    val fx = LocalAppFeedback.current
 
     Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
@@ -123,7 +125,7 @@ fun EventListScreen(
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
-                    IconButton(onClick = { vm.setQuery("") }) {
+                    IconButton(onClick = { fx.tick(); vm.setQuery("") }) {
                         Icon(Icons.Filled.Clear, contentDescription = "清空")
                     }
                 }
@@ -135,7 +137,7 @@ fun EventListScreen(
             listOf(0 to "全部", 1 to "未完成", 2 to "已完成").forEach { (f, label) ->
                 FilterChip(
                     selected = filter == f,
-                    onClick = { vm.setFilter(f) },
+                    onClick = { fx.tick(); vm.setFilter(f) },
                     label = { Text(label) },
                     modifier = Modifier.padding(end = 8.dp)
                 )

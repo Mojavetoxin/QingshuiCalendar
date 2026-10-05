@@ -20,5 +20,8 @@ data class AppSettings(
     val docName: String = "",              // 展示用文件名
     val docHour: Int = 7,
     val docMinute: Int = 30,
-    val notifPermissionAsked: Boolean = false
+    val notifPermissionAsked: Boolean = false,
+    // —— 反馈（音效 + 触感）——
+    val soundEnabled: Boolean = true,      // 点击音效
+    val hapticEnabled: Boolean = true      // 触感振动
 )

@@ -65,7 +65,7 @@ import com.qingshui.calendar.domain.model.EventOccurrence
 import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.domain.model.RepeatType
 import com.qingshui.calendar.ui.components.EmptyHint
-import com.qingshui.calendar.ui.components.rememberClickFeedback
+import com.qingshui.calendar.ui.components.LocalAppFeedback
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -183,7 +183,7 @@ fun MonthScreen(
     var zoomed by remember { mutableStateOf(false) }
     var dragAcc by remember { mutableStateOf(0f) }
 
-    val feedback = rememberClickFeedback()
+    val feedback = LocalAppFeedback.current
 
     Column(
         Modifier
@@ -195,9 +195,9 @@ fun MonthScreen(
                 ) { _, dragAmount ->
                     dragAcc += dragAmount
                     if (!zoomed && dragAcc > 50f) {
-                        feedback(); zoomed = true; dragAcc = 0f
+                        feedback.select(); zoomed = true; dragAcc = 0f
                     } else if (zoomed && dragAcc < -50f) {
-                        feedback(); zoomed = false; dragAcc = 0f
+                        feedback.tick(); zoomed = false; dragAcc = 0f
                     }
                 }
             }
@@ -207,7 +207,7 @@ fun MonthScreen(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { feedback(); vm.setMonth(month.minusMonths(1)) }) {
+            IconButton(onClick = { feedback.page(false); vm.setMonth(month.minusMonths(1)) }) {
                 Text("‹", fontSize = 26.sp)
             }
             Column(
@@ -228,8 +228,8 @@ fun MonthScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { feedback(); vm.goToToday() }) { Text("今天") }
-            IconButton(onClick = { feedback(); vm.setMonth(month.plusMonths(1)) }) {
+            TextButton(onClick = { feedback.select(); vm.goToToday() }) { Text("今天") }
+            IconButton(onClick = { feedback.page(true); vm.setMonth(month.plusMonths(1)) }) {
                 Text("›", fontSize = 26.sp)
             }
         }
@@ -253,7 +253,7 @@ fun MonthScreen(
                 today = LocalDate.now(),
                 selected = selected,
                 occurrences = occurrences,
-                onSelect = { feedback(); vm.select(it) },
+                onSelect = { feedback.tick(); vm.select(it) },
                 weekOnly = zoomed
             )
         }
@@ -558,6 +558,7 @@ fun EventRow(
     onClick: () -> Unit,
     onToggleDone: () -> Unit
 ) {
+    val fx = LocalAppFeedback.current
     Row(
         Modifier
             .fillMaxWidth()
@@ -569,11 +570,17 @@ fun EventRow(
                 MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
                 RoundedCornerShape(12.dp)
             )
-            .clickable(onClick = onClick)
+            .clickable { fx.tick(); onClick() }
             .padding(start = 6.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(checked = event.status == 1, onCheckedChange = { onToggleDone() })
+        Checkbox(
+            checked = event.status == 1,
+            onCheckedChange = { checked ->
+                if (checked) fx.confirm() else fx.tick()
+                onToggleDone()
+            }
+        )
         // 左侧颜色竖条（与预览页一致）
         Box(
             Modifier

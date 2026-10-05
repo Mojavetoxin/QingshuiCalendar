@@ -60,23 +60,24 @@ import com.qingshui.calendar.domain.model.EventColors
 import com.qingshui.calendar.domain.model.EventDraft
 import com.qingshui.calendar.domain.model.EventSource
 import com.qingshui.calendar.domain.model.QuickAddResult
-import com.qingshui.calendar.domain.model.RepeatType
 import com.qingshui.calendar.domain.model.ReminderPresets
+import com.qingshui.calendar.domain.model.RepeatType
 import com.qingshui.calendar.domain.parse.NaturalLanguageParser
 import com.qingshui.calendar.domain.usecase.ImportLinesUseCase
 import com.qingshui.calendar.domain.usecase.draftToEntity
 import com.qingshui.calendar.domain.usecase.quickAddToDraft
 import com.qingshui.calendar.system.DailyImportWorker
 import com.qingshui.calendar.system.SafIO
+import com.qingshui.calendar.ui.components.LocalAppFeedback
 import com.qingshui.calendar.ui.components.SectionTitle
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /** 导入页：一句话解析 + 文档每日导入 + 待处理行管理 */
 class ImportViewModel(private val c: AppContainer) : ViewModel() {
@@ -243,6 +244,7 @@ fun ImportScreen(
     val pending by vm.pending.collectAsState()
     val settings by vm.settings.collectAsState()
 
+    val fx = LocalAppFeedback.current
     var showTimePicker by remember { mutableStateOf(false) }
 
     val docPicker = rememberLauncherForActivityResult(
@@ -269,7 +271,7 @@ fun ImportScreen(
                     placeholder = { Text("例如：明天下午3点 在教室 开班会") },
                     trailingIcon = {
                         if (quickText.isNotEmpty()) {
-                            IconButton(onClick = { vm.clearQuick() }) {
+                            IconButton(onClick = { fx.tick(); vm.clearQuick() }) {
                                 Icon(Icons.Filled.Close, contentDescription = "清空")
                             }
                         }
@@ -277,7 +279,7 @@ fun ImportScreen(
                     maxLines = 3
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { vm.parseQuick() }, enabled = quickText.isNotBlank()) {
+                    Button(onClick = { fx.select(); vm.parseQuick() }, enabled = quickText.isNotBlank()) {
                         Text("解析")
                     }
                 }
@@ -285,8 +287,8 @@ fun ImportScreen(
                 quickResult?.let { r ->
                     QuickPreviewCard(
                         result = r,
-                        onSave = { vm.saveQuick { } },
-                        onEdit = { if (vm.quickToEdit()) onEditEvent(-2L) }
+                        onSave = { fx.confirm(); vm.saveQuick { } },
+                        onEdit = { fx.tick(); if (vm.quickToEdit()) onEditEvent(-2L) }
                     )
                 }
             }
@@ -302,7 +304,7 @@ fun ImportScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedButton(
-                    onClick = { docPicker.launch(arrayOf("text/*", "application/json")) },
+                    onClick = { fx.tick(); docPicker.launch(arrayOf("text/*", "application/json")) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("选择文档")
@@ -323,7 +325,7 @@ fun ImportScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showTimePicker = true }
+                        .clickable { fx.tick(); showTimePicker = true }
                         .padding(vertical = 4.dp)
                 ) {
                     Text("每天读取时间", modifier = Modifier.weight(1f))
@@ -337,7 +339,7 @@ fun ImportScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Button(onClick = { vm.importNow() }, enabled = !busy) {
+                    Button(onClick = { fx.select(); vm.importNow() }, enabled = !busy) {
                         Text("立即读取")
                     }
                     if (busy) {
@@ -361,10 +363,10 @@ fun ImportScreen(
                 PendingCard(
                     rec = rec,
                     busy = busy,
-                    onRetry = { vm.retryPending(rec) },
-                    onEdit = { if (vm.editPending(rec)) onEditEvent(-2L) },
-                    onIgnore = { vm.ignorePending(rec) },
-                    onDelete = { vm.deletePending(rec) }
+                    onRetry = { fx.select(); vm.retryPending(rec) },
+                    onEdit = { fx.tick(); if (vm.editPending(rec)) onEditEvent(-2L) },
+                    onIgnore = { fx.tick(); vm.ignorePending(rec) },
+                    onDelete = { fx.warn(); vm.deletePending(rec) }
                 )
             }
         }

@@ -1,6 +1,5 @@
 package com.qingshui.calendar.ui.components
 
-import android.view.SoundEffectConstants
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,12 +11,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 
 /** 空状态提示 */
@@ -51,6 +46,7 @@ fun LabeledSwitch(
     onChange: (Boolean) -> Unit,
     subtitle: String? = null
 ) {
+    val fx = LocalAppFeedback.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -65,20 +61,7 @@ fun LabeledSwitch(
                 )
             }
         }
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-/** 统一的点击反馈：轻触觉 + 系统点击音（无需音频资源） */
-@Composable
-fun rememberClickFeedback(): () -> Unit {
-    val view = LocalView.current
-    val haptic = LocalHapticFeedback.current
-    return remember(view, haptic) {
-        {
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            view.playSoundEffect(SoundEffectConstants.CLICK)
-        }
+        Switch(checked = checked, onCheckedChange = { fx.tick(); onChange(it) })
     }
 }
 
@@ -91,12 +74,13 @@ fun ConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val fx = LocalAppFeedback.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
         confirmButton = {
-            TextButton(onClick = onConfirm) {
+            TextButton(onClick = { fx.warn(); onConfirm() }) {
                 Text(confirmText, color = MaterialTheme.colorScheme.error)
             }
         },

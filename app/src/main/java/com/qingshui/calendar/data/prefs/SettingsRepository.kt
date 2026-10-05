@@ -30,6 +30,8 @@ class SettingsRepository(private val context: Context) {
         val docHour = intPreferencesKey("doc_hour")
         val docMinute = intPreferencesKey("doc_minute")
         val notifPermissionAsked = booleanPreferencesKey("notif_permission_asked")
+        val soundEnabled = booleanPreferencesKey("sound_enabled")
+        val hapticEnabled = booleanPreferencesKey("haptic_enabled")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -47,7 +49,9 @@ class SettingsRepository(private val context: Context) {
             docName = p[K.docName] ?: "",
             docHour = p[K.docHour] ?: 7,
             docMinute = p[K.docMinute] ?: 30,
-            notifPermissionAsked = p[K.notifPermissionAsked] ?: false
+            notifPermissionAsked = p[K.notifPermissionAsked] ?: false,
+            soundEnabled = p[K.soundEnabled] ?: true,
+            hapticEnabled = p[K.hapticEnabled] ?: true
         )
     }
 
@@ -60,6 +64,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setDynamicColor(v: Boolean) = context.dataStore.edit { it[K.dynamicColor] = v }
     suspend fun setDefaultReminderMinutes(v: Int) = context.dataStore.edit { it[K.defaultReminderMinutes] = v }
     suspend fun setNotifPermissionAsked() = context.dataStore.edit { it[K.notifPermissionAsked] = true }
+
+    suspend fun setSoundEnabled(v: Boolean) = context.dataStore.edit { it[K.soundEnabled] = v }
+
+    suspend fun setHapticEnabled(v: Boolean) = context.dataStore.edit { it[K.hapticEnabled] = v }
 
     /** 文档导入相关设置一次写入 */
     suspend fun setDocImport(enabled: Boolean, uri: String, name: String) =

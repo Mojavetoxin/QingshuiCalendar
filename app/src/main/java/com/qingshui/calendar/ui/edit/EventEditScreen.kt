@@ -62,16 +62,17 @@ import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.domain.usecase.draftToEntity
 import com.qingshui.calendar.system.NotificationHelper
 import com.qingshui.calendar.ui.components.ConfirmDialog
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
+import com.qingshui.calendar.ui.components.LocalAppFeedback
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------- ViewModel
 
@@ -162,6 +163,8 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
         return
     }
 
+    val fx = LocalAppFeedback.current
+
     var showDate by remember { mutableStateOf(false) }
     var showStart by remember { mutableStateOf(false) }
     var showEnd by remember { mutableStateOf(false) }
@@ -181,7 +184,7 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
             .padding(bottom = 24.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onDone) {
+            IconButton(onClick = { fx.tick(); onDone() }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
             Text(
@@ -261,6 +264,7 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
                                 else MaterialTheme.colorScheme.surfaceVariant
                             )
                             .clickable {
+                                fx.tick()
                                 vm.update { dd ->
                                     val days = dd.repeatDays.toMutableSet()
                                     if (selectedDow) days.remove(dow) else days.add(dow)
@@ -311,7 +315,7 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
                             color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
                             shape = CircleShape
                         )
-                        .clickable { vm.update { dd -> dd.copy(color = argb) } }
+                        .clickable { fx.tick(); vm.update { dd -> dd.copy(color = argb) } }
                 )
             }
         }
@@ -321,13 +325,13 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Button(
-                onClick = { vm.save(onDone) },
+                onClick = { fx.confirm(); vm.save(onDone) },
                 enabled = title.isNotBlank(),
                 modifier = Modifier.weight(1f)
             ) { Text("保存") }
             if (d.id != null) {
                 Button(
-                    onClick = { showDelete = true },
+                    onClick = { fx.warn(); showDelete = true },
                     modifier = Modifier.weight(1f)
                 ) { Text("删除", color = MaterialTheme.colorScheme.error) }
             }

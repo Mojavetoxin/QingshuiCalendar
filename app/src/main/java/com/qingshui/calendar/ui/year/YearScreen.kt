@@ -46,15 +46,16 @@ import com.qingshui.calendar.domain.calendar.CalendarUtils
 import com.qingshui.calendar.domain.calendar.LunarCalendar
 import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.domain.model.EventOccurrence
+import com.qingshui.calendar.ui.components.LocalAppFeedback
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.YearMonth
-import java.time.temporal.ChronoUnit
 
 // ---------------------------------------------------------------- ViewModel
 
@@ -111,6 +112,7 @@ fun YearScreen(
     val occurrences by vm.occurrences.collectAsState()
 
     val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
+    val fx = LocalAppFeedback.current
 
     LaunchedEffect(pagerState.currentPage) {
         vm.setYear(vm.baseYear + (pagerState.currentPage - CENTER))
@@ -132,9 +134,9 @@ fun YearScreen(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = { vm.setYear(year - 1) }) { Text("‹", fontSize = 22.sp) }
-            TextButton(onClick = { vm.goToToday() }) { Text("今年") }
-            TextButton(onClick = { vm.setYear(year + 1) }) { Text("›", fontSize = 22.sp) }
+            TextButton(onClick = { fx.page(false); vm.setYear(year - 1) }) { Text("‹", fontSize = 22.sp) }
+            TextButton(onClick = { fx.select(); vm.goToToday() }) { Text("今年") }
+            TextButton(onClick = { fx.page(true); vm.setYear(year + 1) }) { Text("›", fontSize = 22.sp) }
         }
 
         HorizontalPager(
@@ -213,7 +215,7 @@ private fun MiniMonth(
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onClickDay(month.atDay(1)) }
+                .clickable { fx.tick(); onClickDay(month.atDay(1)) }
                 .padding(vertical = 2.dp)
         )
         Row(Modifier.fillMaxWidth()) {
@@ -243,7 +245,7 @@ private fun MiniMonth(
                         Modifier
                             .weight(1f)
                             .padding(vertical = 1.dp)
-                            .clickable { onClickDay(d) },
+                            .clickable { fx.tick(); onClickDay(d) },
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {

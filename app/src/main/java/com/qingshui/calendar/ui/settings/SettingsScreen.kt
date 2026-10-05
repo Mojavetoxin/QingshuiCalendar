@@ -44,6 +44,7 @@ import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.domain.model.ReminderPresets
 import com.qingshui.calendar.ui.components.ConfirmDialog
 import com.qingshui.calendar.ui.components.LabeledSwitch
+import com.qingshui.calendar.ui.components.LocalAppFeedback
 import com.qingshui.calendar.ui.components.SectionTitle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -71,6 +72,10 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setDefaultReminder(minutes: Int) = viewModelScope.launch {
         c.settingsRepository.setDefaultReminderMinutes(minutes)
     }
+
+    fun setSoundEnabled(v: Boolean) = viewModelScope.launch { c.settingsRepository.setSoundEnabled(v) }
+
+    fun setHapticEnabled(v: Boolean) = viewModelScope.launch { c.settingsRepository.setHapticEnabled(v) }
 
     /** 导出全部日程到用户指定的 JSON 文件 */
     fun export(uri: Uri) = viewModelScope.launch {
@@ -104,6 +109,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
     val s by vm.settings.collectAsState()
     val message by vm.message.collectAsState()
 
+    val fx = LocalAppFeedback.current
     var showReminderDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
 
@@ -162,7 +168,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             listOf(0 to "跟随系统", 1 to "浅色", 2 to "深色").forEach { (mode, label) ->
                 FilterChip(
                     selected = s.themeMode == mode,
-                    onClick = { vm.setThemeMode(mode) },
+                    onClick = { fx.tick(); vm.setThemeMode(mode) },
                     label = { Text(label) }
                 )
             }
@@ -181,7 +187,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { showReminderDialog = true }
+                .clickable { fx.tick(); showReminderDialog = true }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -193,6 +199,41 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             )
         }
 
+        // ── 声音与触感 ──
+        SectionTitle("声音与触感")
+        LabeledSwitch(
+            title = "音效",
+            checked = s.soundEnabled,
+            onChange = { vm.setSoundEnabled(it) },
+            subtitle = "点击、翻页、保存时的系统提示音"
+        )
+        LabeledSwitch(
+            title = "触感反馈",
+            checked = s.hapticEnabled,
+            onChange = { vm.setHapticEnabled(it) },
+            subtitle = "轻点、确认、删除时的手感振动"
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { fx.confirm() }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("试一下手感", modifier = Modifier.weight(1f))
+            Text(
+                "点这里",
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        Text(
+            "音效与触感由系统统一管理：若你在系统设置里关掉了「触摸提示音」或「触感反馈」，这里即使打开也不会有声音或振动。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+
         // ── 数据 ──
         SectionTitle("数据")
         Row(
@@ -201,17 +242,18 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
                 .padding(horizontal = 16.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = { exportLauncher.launch("qingshui-backup.json") }) {
+            Button(onClick = { fx.confirm(); exportLauncher.launch("qingshui-backup.json") }) {
                 Text("导出备份")
             }
             OutlinedButton(onClick = {
+                fx.confirm()
                 restoreLauncher.launch(arrayOf("application/json", "text/*"))
             }) {
                 Text("恢复备份")
             }
         }
         Button(
-            onClick = { showClearDialog = true },
+            onClick = { fx.warn(); showClearDialog = true },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
             modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -267,6 +309,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    fx.tick()
                                     vm.setDefaultReminder(minutes)
                                     showReminderDialog = false
                                 }
