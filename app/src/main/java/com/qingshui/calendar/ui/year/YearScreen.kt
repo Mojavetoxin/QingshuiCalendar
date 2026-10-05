@@ -198,6 +198,7 @@ private fun MiniMonth(
     onClickDay: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val fx = LocalAppFeedback.current
     val wsMonday = settings.weekStartMonday
     val dates = remember(month, wsMonday) { CalendarUtils.gridDates(month, wsMonday) }
     val labels = remember(wsMonday) { CalendarUtils.weekdayLabels(wsMonday) }
