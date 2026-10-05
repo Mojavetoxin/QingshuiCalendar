@@ -3,11 +3,11 @@
 package com.qingshui.calendar.ui.month
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,15 +20,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -38,6 +38,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,10 +64,14 @@ import com.qingshui.calendar.domain.calendar.LunarCalendar
 import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.domain.model.EventColors
 import com.qingshui.calendar.domain.model.EventOccurrence
-import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.domain.model.RepeatType
+import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.ui.components.EmptyHint
 import com.qingshui.calendar.ui.components.LocalAppFeedback
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,11 +80,6 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.YearMonth
-import java.time.temporal.ChronoUnit
-import androidx.compose.foundation.ExperimentalFoundationApi
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 // ---------------------------------------------------------------- ViewModel
 
@@ -159,10 +160,13 @@ fun MonthScreen(
     onEditEvent: (Long) -> Unit
 ) {
     val vm: MonthViewModel = viewModel(factory = factory)
-    val settings by vm.settings.collectAsState()
     val month by vm.month.collectAsState()
-    val occurrences by vm.occurrences.collectAsState()
-    val selected by vm.selected.collectAsState()
+    // ★ 这三项不取成"值"，而是持有 State 对象、在真正用到的地方才读 .value。
+    //   Pager 的页面跑在子组合里，闭包捕获的值不会让页面订阅状态 → 页面会停在首次组合的数据。
+    val settingsState = vm.settings.collectAsState()
+    val occurrencesState = vm.occurrences.collectAsState()
+    val selectedState = vm.selected.collectAsState()
+    val selected = selectedState.value
 
     val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
 
@@ -184,6 +188,18 @@ fun MonthScreen(
     var dragAcc by remember { mutableStateOf(0f) }
 
     val feedback = LocalAppFeedback.current
+
+    // 把网格要用的动态数据打包成一个 State，在 Pager 页面内部读它 → 页面才会订阅并重组
+    val gridInput by remember {
+        derivedStateOf {
+            MonthGridInput(
+                settings = settingsState.value,
+                selected = selectedState.value,
+                occurrences = occurrencesState.value,
+                zoomed = zoomed
+            )
+        }
+    }
 
     Column(
         Modifier
@@ -216,7 +232,8 @@ fun MonthScreen(
             ) {
                 Text(
                     "${month.year} 年 ${month.monthValue} 月",
-                    style = MaterialTheme.typography.titleLarge
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
                     LunarCalendar.ganZhiYear(month.year) + "年" +
@@ -224,7 +241,7 @@ fun MonthScreen(
                             month.year,
                             LunarCalendar.from(month.atDay(1))?.month ?: 1
                         ) + "月",
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 12.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -237,7 +254,7 @@ fun MonthScreen(
         // 月网格（横向翻页）：下拉放大成周视图，上滑收回整月
         // 固定高度 = 表头 + 行数 × 行高（周视图行更高，显示当天日程标题）
         val gridHeight by animateDpAsState(
-            targetValue = if (zoomed) 128.dp else 358.dp,
+            targetValue = if (zoomed) 134.dp else 400.dp,
             label = "gridHeight"
         )
         HorizontalPager(
@@ -249,12 +266,9 @@ fun MonthScreen(
             val m = vm.baseMonth.plusMonths((page - CENTER).toLong())
             MonthGrid(
                 month = m,
-                settings = settings,
+                input = gridInput,
                 today = LocalDate.now(),
-                selected = selected,
-                occurrences = occurrences,
-                onSelect = { feedback.tick(); vm.select(it) },
-                weekOnly = zoomed
+                onSelect = { feedback.tick(); vm.select(it) }
             )
         }
 
@@ -268,7 +282,8 @@ fun MonthScreen(
         if (selDay == null) {
             EmptyHint("点一个日期查看当天日程")
         } else {
-            val upcoming = occurrences.filterKeys { !it.isBefore(selDay) }.toSortedMap()
+            val upcoming = occurrencesState.value
+                .filterKeys { !it.isBefore(selDay) }.toSortedMap()
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -278,7 +293,7 @@ fun MonthScreen(
                 if (upcoming.isEmpty()) {
                     Text(
                         "这一天和之后还没有日程 —— 点右下角按钮新建",
-                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 12.dp)
                     )
@@ -290,9 +305,10 @@ fun MonthScreen(
                                 " · " + LunarCalendar.ganZhiYear(d.year) + "年" +
                                 LunarCalendar.lunarMonthDay(d) +
                                 " · " + LunarCalendar.ganZhiDay(d) + "日",
-                            style = MaterialTheme.typography.titleSmall,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 2.dp)
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)
                         )
                         entry.value.forEach { o ->
                             EventRow(
@@ -318,7 +334,7 @@ fun MonthScreen(
         ) {
             DayEventsPanel(
                 date = d,
-                events = occurrences[d].orEmpty(),
+                events = occurrencesState.value[d].orEmpty(),
                 today = LocalDate.now(),
                 onEditEvent = { showDaySheet = false; onEditEvent(it) },
                 onToggleDone = { vm.toggleDone(it) }
@@ -332,37 +348,36 @@ fun MonthScreen(
 @Composable
 fun MonthGrid(
     month: YearMonth,
-    settings: AppSettings,
+    input: MonthGridInput,
     today: LocalDate,
-    selected: LocalDate?,
-    occurrences: Map<LocalDate, List<EventOccurrence>>,
-    onSelect: (LocalDate) -> Unit,
-    weekOnly: Boolean = false
+    onSelect: (LocalDate) -> Unit
 ) {
+    val settings = input.settings
     val wsMonday = settings.weekStartMonday
     val dates = remember(month, wsMonday) { CalendarUtils.gridDates(month, wsMonday) }
     val labels = remember(wsMonday) { CalendarUtils.weekdayLabels(wsMonday) }
     // 周视图：只保留包含选中日（或今天）的那一行
     val allWeeks = remember(dates) { dates.chunked(7) }
-    val weeks = remember(allWeeks, selected, today, weekOnly) {
-        if (!weekOnly) allWeeks
+    val weeks = remember(allWeeks, input.selected, today, input.zoomed) {
+        if (!input.zoomed) allWeeks
         else {
-            val anchor = selected ?: today
+            val anchor = input.selected ?: today
             val idx = allWeeks.indexOfFirst { w -> w.any { it == anchor } }
             listOf(allWeeks[if (idx >= 0) idx else 0])
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-        // 星期表头
-        Row(Modifier.fillMaxWidth()) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
+        // 星期表头（13sp -> 14sp）
+        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             if (settings.showWeekNumber) Spacer(Modifier.width(24.dp))
             labels.forEach { label ->
                 Text(
                     label,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
                     color = if (label == "日" || label == "六") MaterialTheme.colorScheme.error
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -370,24 +385,24 @@ fun MonthGrid(
         }
         // 6 行 x 7 列（周视图只渲染一行，行高更大并显示当天日程标题）
         weeks.forEach { week ->
-            Row(Modifier.fillMaxWidth().height(if (weekOnly) 92.dp else 56.dp)) {
+            Row(Modifier.fillMaxWidth().height(if (input.zoomed) 104.dp else 62.dp)) {
                 if (settings.showWeekNumber) {
                     Text(
                         "${CalendarUtils.weekNumber(week.first(), wsMonday)}",
                         modifier = Modifier.width(24.dp),
                         textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 week.forEach { d ->
                     DateCell(
                         date = d,
-                        detail = weekOnly,
+                        detail = input.zoomed,
                         inMonth = d.monthValue == month.monthValue,
                         today = today,
-                        selected = selected,
-                        events = occurrences[d].orEmpty(),
+                        selected = input.selected,
+                        events = input.occurrences[d].orEmpty(),
                         settings = settings,
                         onClick = { onSelect(d) },
                         modifier = Modifier.weight(1f)
@@ -397,6 +412,23 @@ fun MonthGrid(
         }
     }
 }
+
+/**
+ * 月网格的全部动态输入。
+ *
+ * ★ 为什么要打成一个对象、并且由外部以 State 的形式传入？
+ * `HorizontalPager` 的每一页是在**子组合**里渲染的。如果页面闭包直接捕获
+ * `occurrences` 这类"读出来的值"，页面就不会订阅这些状态——数据变了页面也不重组，
+ * 于是日程圆点、选中高亮永远停在首次组合时的样子（首次组合时 occurrences 还是空 map）。
+ * 实测症状：列表（普通 Column）正常更新，网格里的圆点却一个都不出现。
+ * 修法：把输入打包成 State，在页面内部读 `.value`，页面才会订阅并在变化时重组。
+ */
+data class MonthGridInput(
+    val settings: AppSettings,
+    val selected: LocalDate?,
+    val occurrences: Map<LocalDate, List<EventOccurrence>>,
+    val zoomed: Boolean
+)
 
 @Composable
 private fun DateCell(
@@ -412,7 +444,7 @@ private fun DateCell(
 ) {
     val isToday = date == today
     val isSelected = date == selected
-    val alpha = if (inMonth) 1f else 0.35f
+    val weekend = date.dayOfWeek.value == 6 || date.dayOfWeek.value == 7
 
     val lunar = if (settings.showLunar) LunarCalendar.from(date) else null
     val term = if (settings.showSolarTerm) LunarCalendar.solarTermName(date) else null
@@ -428,7 +460,7 @@ private fun DateCell(
         else -> ""
     }
     val subColor = when {
-        !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+        !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
         holiday != null && holiday.isOffDay -> MaterialTheme.colorScheme.error
         term != null -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -438,84 +470,77 @@ private fun DateCell(
         modifier
             .clickable(onClick = onClick)
             .padding(vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 日号（今天/选中给圆形底）
-        val circleBg = when {
+        // 日号：今天/选中给「圆角方块」底（比圆形更接近系统日历的观感）
+        val chipBg = when {
             isToday -> MaterialTheme.colorScheme.primary
-            isSelected -> MaterialTheme.colorScheme.secondaryContainer
+            isSelected -> MaterialTheme.colorScheme.primaryContainer
             else -> androidx.compose.ui.graphics.Color.Transparent
+        }
+        val numberColor = when {
+            isToday -> MaterialTheme.colorScheme.onPrimary
+            isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+            !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.32f)
+            weekend -> MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+            else -> MaterialTheme.colorScheme.onSurface
         }
         Box(
             Modifier
-                .size(30.dp)
-                .clip(CircleShape)
-                .background(circleBg),
+                .size(36.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(chipBg),
             contentAlignment = Alignment.Center
         ) {
-            val weekend = date.dayOfWeek.value == 6 || date.dayOfWeek.value == 7
-            val numberColor = when {
-                isToday -> MaterialTheme.colorScheme.onPrimary
-                isSelected -> MaterialTheme.colorScheme.onSecondaryContainer
-                !inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-                weekend -> MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                else -> MaterialTheme.colorScheme.onSurface
-            }
             Text(
                 "${date.dayOfMonth}",
-                fontSize = 15.sp,
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal,
+                fontSize = 18.sp,
+                fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = numberColor
             )
         }
-        // 农历 / 节气 / 节假日小字
-        if (subText.isNotEmpty()) {
-            Text(
-                subText,
-                fontSize = 8.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                color = subColor.copy(alpha = if (inMonth) 1f else 0.5f)
-            )
-        } else if (isMakeup) {
-            Text(
-                "班",
-                fontSize = 8.sp,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        // 放大（周视图）时直接露出当天首条日程标题
-        if (detail && events.isNotEmpty()) {
-            Text(
-                events.first().event.title,
-                fontSize = 8.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-        }
-        // 日程圆点（最多 3 个，按事件颜色）
-        val distinct = events.distinctBy { it.event.id }.take(3)
-        if (distinct.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                distinct.forEach { o ->
-                    Box(
-                        Modifier
-                            .size(5.dp)
-                            .clip(CircleShape)
-                            .background(
-                                androidx.compose.ui.graphics.Color(
-                                    EventColors.argb(o.event.color.toLong())
-                                ).copy(alpha = if (o.event.status == 1) 0.35f else 1f)
+        // 农历 / 节气 / 节假日（字号从 8sp 提到 10.5sp）
+        Text(
+            subText.ifEmpty { " " },
+            fontSize = 10.5.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            color = subColor
+        )
+        // 固定高度的一行：周视图里显示当天首条日程标题，否则显示彩色圆点。
+        // 无论有没有日程都占同样高度，翻月时不会跳。
+        Box(
+            Modifier.height(10.dp).fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (detail && events.isNotEmpty()) {
+                Text(
+                    events.first().event.title,
+                    fontSize = 9.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                val dots = events.distinctBy { it.event.id }.take(3)
+                if (dots.isNotEmpty()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        dots.forEach { o ->
+                            Box(
+                                Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        androidx.compose.ui.graphics.Color(
+                                            EventColors.argb(o.event.color.toLong())
+                                        ).copy(alpha = if (o.event.status == 1) 0.35f else 1f)
+                                    )
                             )
-                    )
+                        }
+                    }
                 }
             }
-        } else {
-            Spacer(Modifier.height(5.dp))
         }
     }
 }
@@ -593,7 +618,8 @@ fun EventRow(
         Column(Modifier.weight(1f)) {
             Text(
                 event.title,
-                style = MaterialTheme.typography.bodyLarge,
+                fontSize = 16.5.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 color = if (event.status == 1) MaterialTheme.colorScheme.onSurfaceVariant
@@ -613,7 +639,7 @@ fun EventRow(
             }.filter { it.isNotBlank() }
             Text(
                 listOf(timeText, *extra.toTypedArray()).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
+                fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -621,7 +647,7 @@ fun EventRow(
             if (event.location.isNotBlank()) {
                 Text(
                     "地点：" + event.location,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -630,7 +656,7 @@ fun EventRow(
             if (event.description.isNotBlank()) {
                 Text(
                     event.description,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

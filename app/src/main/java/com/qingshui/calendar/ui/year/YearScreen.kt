@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -107,12 +108,23 @@ fun YearScreen(
     onJumpToMonth: (LocalDate) -> Unit
 ) {
     val vm: YearViewModel = viewModel(factory = factory)
-    val settings by vm.settings.collectAsState()
     val year by vm.year.collectAsState()
-    val occurrences by vm.occurrences.collectAsState()
+    // ★ 与月视图同样的坑：Pager 的页面在子组合里渲染，直接传"读出来的值"页面不会订阅状态，
+    //   迷你月里的日程红点就不会更新。持有 State、在页面内部才读，页面才会重组。
+    val settingsState = vm.settings.collectAsState()
+    val occurrencesState = vm.occurrences.collectAsState()
 
     val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
     val fx = LocalAppFeedback.current
+
+    val yearInput by remember {
+        derivedStateOf {
+            YearGridInput(
+                settings = settingsState.value,
+                occurrences = occurrencesState.value
+            )
+        }
+    }
 
     LaunchedEffect(pagerState.currentPage) {
         vm.setYear(vm.baseYear + (pagerState.currentPage - CENTER))
@@ -131,7 +143,8 @@ fun YearScreen(
         ) {
             Text(
                 "${year} 年 · ${LunarCalendar.ganZhiYear(year)}年",
-                style = MaterialTheme.typography.titleLarge,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = { fx.page(false); vm.setYear(year - 1) }) { Text("‹", fontSize = 22.sp) }
@@ -146,9 +159,8 @@ fun YearScreen(
             val y = vm.baseYear + (page - CENTER)
             YearGrid(
                 year = y,
-                settings = settings,
+                input = yearInput,
                 today = LocalDate.now(),
-                occurrences = occurrences,
                 onClickDay = onJumpToMonth
             )
         }
@@ -158,11 +170,12 @@ fun YearScreen(
 @Composable
 private fun YearGrid(
     year: Int,
-    settings: AppSettings,
+    input: YearGridInput,
     today: LocalDate,
-    occurrences: Map<LocalDate, List<EventOccurrence>>,
     onClickDay: (LocalDate) -> Unit
 ) {
+    val settings = input.settings
+    val occurrences = input.occurrences
     Column(
         Modifier
             .fillMaxSize()
@@ -287,3 +300,12 @@ private fun MiniMonth(
         }
     }
 }
+
+/**
+ * 年视图网格的动态输入。理由同 [MonthGridInput]：
+ * Pager 页面在子组合里渲染，捕获"值"不会订阅状态 → 必须由外部以 State 形式传入、页面内部读。
+ */
+data class YearGridInput(
+    val settings: AppSettings,
+    val occurrences: Map<LocalDate, List<EventOccurrence>>
+)
