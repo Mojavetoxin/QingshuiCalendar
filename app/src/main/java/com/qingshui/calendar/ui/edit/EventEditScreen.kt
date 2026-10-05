@@ -89,7 +89,10 @@ class EventEditViewModel(private val c: AppContainer, private val editId: Long) 
                 editId == -2L -> c.draftChannel.tryReceive().getOrNull()
                 else -> null
             }
-            _draft.value = base ?: EventDraft(reminderMinutes = s.defaultReminderMinutes)
+            _draft.value = base ?: EventDraft(
+                reminderMinutes = s.defaultReminderMinutes,
+                color = EventColors.nextColor(c.eventRepository.getAllOnce().size)
+            )
         }
     }
 

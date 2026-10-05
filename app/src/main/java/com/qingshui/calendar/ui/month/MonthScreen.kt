@@ -3,6 +3,8 @@
 package com.qingshui.calendar.ui.month
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,12 +18,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -171,27 +176,36 @@ fun MonthScreen(
     }
 
     var showDaySheet by remember { mutableStateOf(false) }
+    // 下拉放大：false = 整月六行，true = 只显示选中日所在的一周（放大）
+    var zoomed by remember { mutableStateOf(false) }
+    var dragAcc by remember { mutableStateOf(0f) }
 
     Column(Modifier.fillMaxSize()) {
-        // 顶栏：年月 + 翻页 + 今天
+        // 顶栏：左右翻页 + 居中标题（公历 + 干支农历）+ 今天
         Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+            Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(Modifier.weight(1f)) {
+            IconButton(onClick = { vm.setMonth(month.minusMonths(1)) }) {
+                Text("‹", fontSize = 26.sp)
+            }
+            Column(
+                Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
                     "${month.year} 年 ${month.monthValue} 月",
                     style = MaterialTheme.typography.titleLarge
                 )
                 Text(
                     LunarCalendar.ganZhiYear(month.year) + "年" +
-                        LunarCalendar.lunarMonthName(month.atDay(1)),
+                        LunarCalendar.ganZhiMonth(
+                            month.year,
+                            LunarCalendar.from(month.atDay(1))?.month ?: 1
+                        ) + "月",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            IconButton(onClick = { vm.setMonth(month.minusMonths(1)) }) {
-                Text("‹", fontSize = 26.sp)
             }
             TextButton(onClick = { vm.goToToday() }) { Text("今天") }
             IconButton(onClick = { vm.setMonth(month.plusMonths(1)) }) {
@@ -199,10 +213,28 @@ fun MonthScreen(
             }
         }
 
-        // 月网格（横向翻页）
+        // 月网格（横向翻页）：下拉放大成周视图，上滑收回整月
+        // 固定高度 = 表头 + 行数 × 行高（周视图行更高，显示当天日程标题）
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (zoomed) 124.dp else 358.dp)
+                .pointerInput(zoomed) {
+                    detectVerticalDragGestures(
+                        onDragEnd = { dragAcc = 0f },
+                        onDragCancel = { dragAcc = 0f }
+                    ) { _, dragAmount ->
+                        dragAcc += dragAmount
+                        if (!zoomed && dragAcc > 60f) {
+                            zoomed = true
+                            dragAcc = 0f
+                        } else if (zoomed && dragAcc < -60f) {
+                            zoomed = false
+                            dragAcc = 0f
+                        }
+                    }
+                }
         ) { page ->
             val m = vm.baseMonth.plusMonths((page - CENTER).toLong())
             MonthGrid(
@@ -211,25 +243,55 @@ fun MonthScreen(
                 today = LocalDate.now(),
                 selected = selected,
                 occurrences = occurrences,
-                onSelect = { vm.select(it); showDaySheet = true }
+                onSelect = { vm.select(it) },
+                weekOnly = zoomed
             )
         }
 
-        // 选中日期的摘要行
-        selected?.let { d ->
-            val dayEvents = occurrences[d].orEmpty()
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+        HorizontalDivider(
+            Modifier.padding(horizontal = 16.dp),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        )
+
+        // 选中日期的日程列表：直接铺在下方（点条目进编辑，勾选框切换完成）
+        val selDay = selected
+        if (selDay == null) {
+            EmptyHint("点一个日期查看当天日程")
+        } else {
+            val dayEvents = occurrences[selDay].orEmpty()
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    "${d.monthValue}月${d.dayOfMonth}日 · ${dayEvents.size} 项日程 · 点击查看",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { showDaySheet = true }
+                    text = CalendarUtils.dateHeader(selDay, LocalDate.now()) +
+                        " · " + LunarCalendar.ganZhiYear(selDay.year) + "年" +
+                        LunarCalendar.lunarMonthDay(selDay) +
+                        " · " + LunarCalendar.ganZhiDay(selDay) + "日",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 2.dp)
                 )
+                if (dayEvents.isEmpty()) {
+                    Text(
+                        "这一天还没有日程 —— 点右下角按钮新建",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 12.dp)
+                    )
+                } else {
+                    dayEvents.forEach { o ->
+                        EventRow(
+                            event = o.event,
+                            occurrenceStart = o.date,
+                            onClick = { onEditEvent(o.event.id) },
+                            onToggleDone = { vm.toggleDone(o) }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(76.dp))
             }
         }
     }
@@ -261,11 +323,22 @@ fun MonthGrid(
     today: LocalDate,
     selected: LocalDate?,
     occurrences: Map<LocalDate, List<EventOccurrence>>,
-    onSelect: (LocalDate) -> Unit
+    onSelect: (LocalDate) -> Unit,
+    weekOnly: Boolean = false
 ) {
     val wsMonday = settings.weekStartMonday
     val dates = remember(month, wsMonday) { CalendarUtils.gridDates(month, wsMonday) }
     val labels = remember(wsMonday) { CalendarUtils.weekdayLabels(wsMonday) }
+    // 周视图：只保留包含选中日（或今天）的那一行
+    val allWeeks = remember(dates) { dates.chunked(7) }
+    val weeks = remember(allWeeks, selected, today, weekOnly) {
+        if (!weekOnly) allWeeks
+        else {
+            val anchor = selected ?: today
+            val idx = allWeeks.indexOfFirst { w -> w.any { it == anchor } }
+            listOf(allWeeks[if (idx >= 0) idx else 0])
+        }
+    }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
         // 星期表头
@@ -282,9 +355,9 @@ fun MonthGrid(
                 )
             }
         }
-        // 6 行 x 7 列
-        dates.chunked(7).forEach { week ->
-            Row(Modifier.fillMaxWidth().height(56.dp)) {
+        // 6 行 x 7 列（周视图只渲染一行，行高更大并显示当天日程标题）
+        weeks.forEach { week ->
+            Row(Modifier.fillMaxWidth().height(if (weekOnly) 92.dp else 56.dp)) {
                 if (settings.showWeekNumber) {
                     Text(
                         "${CalendarUtils.weekNumber(week.first(), wsMonday)}",
@@ -297,6 +370,7 @@ fun MonthGrid(
                 week.forEach { d ->
                     DateCell(
                         date = d,
+                        detail = weekOnly,
                         inMonth = d.monthValue == month.monthValue,
                         today = today,
                         selected = selected,
@@ -314,6 +388,7 @@ fun MonthGrid(
 @Composable
 private fun DateCell(
     date: LocalDate,
+    detail: Boolean = false,
     inMonth: Boolean,
     today: LocalDate,
     selected: LocalDate?,
@@ -396,6 +471,17 @@ private fun DateCell(
                 fontSize = 8.sp,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold
+            )
+        }
+        // 放大（周视图）时直接露出当天首条日程标题
+        if (detail && events.isNotEmpty()) {
+            Text(
+                events.first().event.title,
+                fontSize = 8.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
         // 日程圆点（最多 3 个，按事件颜色）

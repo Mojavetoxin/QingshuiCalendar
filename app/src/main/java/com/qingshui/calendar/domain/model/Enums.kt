@@ -50,5 +50,11 @@ object EventColors {
 
     fun default(): Int = 0xFF2A9D8F.toInt()
 
+    /** 按已有日程条数轮换取色：新建的日程默认就是彩色的，省掉一步手选 */
+    fun nextColor(existingCount: Int): Int {
+        val n = palette.size
+        return palette[((existingCount % n) + n) % n].toInt()
+    }
+
     fun argb(longValue: Long): Int = longValue.toInt()
 }

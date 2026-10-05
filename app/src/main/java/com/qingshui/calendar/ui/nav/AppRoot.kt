@@ -10,6 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -117,6 +119,13 @@ fun AppRoot(c: AppContainer) {
     }
 
     Scaffold(
+        floatingActionButton = {
+            if (currentRoute == "tab_month" || currentRoute == "tab_list") {
+                FloatingActionButton(onClick = { navController.navigate("event_edit/-1") }) {
+                    Icon(Icons.Filled.Add, contentDescription = "新建日程")
+                }
+            }
+        },
         bottomBar = {
             if (currentRoute.startsWith("tab_")) {
                 NavigationBar {

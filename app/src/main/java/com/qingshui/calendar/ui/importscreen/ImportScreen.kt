@@ -56,6 +56,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qingshui.calendar.data.local.entity.ImportRecordEntity
 import com.qingshui.calendar.di.AppContainer
 import com.qingshui.calendar.domain.model.AppSettings
+import com.qingshui.calendar.domain.model.EventColors
 import com.qingshui.calendar.domain.model.EventDraft
 import com.qingshui.calendar.domain.model.EventSource
 import com.qingshui.calendar.domain.model.QuickAddResult
@@ -112,7 +113,9 @@ class ImportViewModel(private val c: AppContainer) : ViewModel() {
         val r = quickResult.value ?: return
         viewModelScope.launch {
             val defaultReminder = c.settingsRepository.settings.first().defaultReminderMinutes
-            val draft = quickAddToDraft(r, defaultReminder)
+            val draft = quickAddToDraft(r, defaultReminder).copy(
+                color = EventColors.nextColor(c.eventRepository.getAllOnce().size)
+            )
             c.eventRepository.upsert(draftToEntity(draft, EventSource.QUICK_ADD))
             c.alarmScheduler.rescheduleNext()
             clearQuick()

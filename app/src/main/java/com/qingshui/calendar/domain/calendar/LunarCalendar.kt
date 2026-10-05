@@ -117,6 +117,17 @@ object LunarCalendar {
         return GAN[(idx % 10).toInt()] + ZHI[(idx % 12).toInt()]
     }
 
+    /**
+     * 干支纪月（五虎遁）：年干定正月天干（甲己→丙寅、乙庚→戊寅、丙辛→庚寅、丁壬→壬寅、戊癸→甲寅），
+     * 月支固定「正月起寅」。如 2026 年（丙午）农历八月 -> 丁酉。
+     */
+    fun ganZhiMonth(year: Int, lunarMonth: Int): String {
+        val m = ((lunarMonth - 1) % 12 + 12) % 12
+        val yGan = (year - 4).mod(10)              // 0 = 甲
+        val firstGan = (yGan * 2 + 2) % 10         // 正月（寅月）的天干
+        return GAN[(firstGan + m) % 10] + ZHI[(m + 2) % 12]
+    }
+
     /** 农历月日连写，如「八月廿五」；越界返回空串 */
     fun lunarMonthDay(date: LocalDate): String {
         val l = from(date) ?: return ""
