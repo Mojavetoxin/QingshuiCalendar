@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -25,6 +26,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,6 +113,13 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
 
     val fx = LocalAppFeedback.current
     var showReminderDialog by remember { mutableStateOf(false) }
+
+    // 导出 / 恢复的结果反馈：成功一声"搞定"，失败一声"不行"
+    LaunchedEffect(message) {
+        if (message.isNotBlank()) {
+            if (message.contains("失败")) fx.error() else fx.success()
+        }
+    }
     var showClearDialog by remember { mutableStateOf(false) }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -205,7 +214,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             title = "音效",
             checked = s.soundEnabled,
             onChange = { vm.setSoundEnabled(it) },
-            subtitle = "点击、翻页、保存时的系统提示音"
+            subtitle = "点击、翻页、保存时的提示音（内置合成，不依赖系统开关）"
         )
         LabeledSwitch(
             title = "触感反馈",
@@ -213,22 +222,25 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             onChange = { vm.setHapticEnabled(it) },
             subtitle = "轻点、确认、删除时的手感振动"
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { fx.confirm() }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("试一下手感", modifier = Modifier.weight(1f))
+        // 试听：四档手感各不相同，点一下就能听出差别
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             Text(
-                "点这里",
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Medium
+                "试听（四档手感各不相同）",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = { fx.tick() }, label = { Text("轻点") })
+                AssistChip(onClick = { fx.confirm() }, label = { Text("确认") })
+                AssistChip(onClick = { fx.success() }, label = { Text("完成") })
+                AssistChip(onClick = { fx.warn() }, label = { Text("警示") })
+                AssistChip(onClick = { fx.error() }, label = { Text("失败") })
+            }
         }
         Text(
-            "音效与触感由系统统一管理：若你在系统设置里关掉了「触摸提示音」或「触感反馈」，这里即使打开也不会有声音或振动。",
+            "音效用内置合成音，不依赖系统的「触摸提示音」开关；触感则仍由系统「触感反馈」控制。" +
+                "开关彼此独立：只关振动时声音照常。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)

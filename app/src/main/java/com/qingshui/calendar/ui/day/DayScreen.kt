@@ -1,14 +1,22 @@
 package com.qingshui.calendar.ui.day
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -22,16 +30,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -50,6 +66,7 @@ import com.qingshui.calendar.ui.month.EventRow
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -60,9 +77,14 @@ import kotlinx.coroutines.launch
 /** 单日视图的数据窗口（左右各 ±180 天，横滑够用） */
 private const val WINDOW_DAYS = 180L
 
+/** 相邻卡片在屏幕边缘露出的宽度（"侧边虚影"） */
+private val PEEK = 22.dp
+
+/** 卡片之间的水平间距 */
+private val CARD_GAP = 10.dp
+
 /**
- * 日视图 ViewModel：以"今天"为基准的大页数 Pager，横滑即切换昨天/明天。
- * 展开一段日期窗口的日程，横滑时不至于出现空白。
+ * 日视图 ViewModel：以"今天"为基准展开一段日期窗口的日程，横滑切换昨天/明天。
  */
 class DayViewModel(private val c: AppContainer) : ViewModel() {
 
@@ -104,12 +126,23 @@ class DayViewModel(private val c: AppContainer) : ViewModel() {
 }
 
 /**
- * 日视图页面要用的动态输入（在 DayScreen 的普通组合里构造，天然随数据更新）。 */
+ * 日视图页面要用的动态输入（在 DayScreen 的普通组合里构造，天然随数据更新）。
+ */
 data class DayInput(
     val settings: AppSettings,
     val occurrences: Map<LocalDate, List<EventOccurrence>>
 )
 
+/**
+ * 日历（单日）视图。
+ *
+ * 布局是**卡片轮播**：屏幕中间是当天的完整卡片，左右两侧各露出一小条相邻日期的"虚影"
+ * （半透明 + 略缩小），一眼就能看出可以左右滑。
+ *
+ * 刻意**不用 `HorizontalPager`** —— Pager 的每一页跑在子组合里，页面不会随外部数据重组
+ * （实测圆点/列表永远是空的）。这里改成"一个 Row 放三张卡片 + 用 offset 平移"，
+ * 拖拽实时跟手，松手按阈值决定切页还是弹回。
+ */
 @Composable
 fun DayScreen(
     factory: ViewModelProvider.Factory,
@@ -123,9 +156,11 @@ fun DayScreen(
     val fx = LocalAppFeedback.current
     val today = remember { LocalDate.now() }
 
-    var dragX by remember { mutableStateOf(0f) }
+    val input = DayInput(settings, occurrences)
 
     Column(Modifier.fillMaxSize()) {
+
+        // ── 顶栏 ──
         Row(
             Modifier
                 .fillMaxWidth()
@@ -144,42 +179,157 @@ fun DayScreen(
             TextButton(onClick = { fx.select(); vm.goToToday() }) { Text("今天") }
         }
 
-        // 直接渲染选中日期（同样不用 Pager：页面在子组合里，日程列表会一直是空的）
-        // 左右滑动切换昨天 / 明天
-        Box(
+        // ── 卡片轮播 ──
+        BoxWithConstraints(
             Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .pointerInput(selected) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (abs(dragX) > 60f) {
-                                val forward = dragX < 0f
-                                fx.page(forward)
-                                vm.select(selected.plusDays(if (forward) 1L else -1L))
-                            }
-                            dragX = 0f
-                        },
-                        onDragCancel = { dragX = 0f }
-                    ) { _, dragAmount ->
-                        dragX += dragAmount
-                    }
-                }
         ) {
-            DayPage(
-                date = selected,
-                input = DayInput(settings, occurrences),
-                today = today,
-                onEditEvent = onEditEvent,
-                onToggleDone = { vm.toggleDone(it) }
-            )
+            val density = LocalDensity.current
+            val cardW: Dp = maxWidth - PEEK * 2
+            val cardWPx = with(density) { cardW.toPx() }
+            val gapPx = with(density) { CARD_GAP.toPx() }
+            val peekPx = with(density) { PEEK.toPx() }
+            // Row 的起点：让中间那张卡片正好居中（两侧各露 PEEK - GAP）
+            val homeX = peekPx - cardWPx - gapPx
+
+            val scope = rememberCoroutineScope()
+            val offsetX = remember { Animatable(homeX) }
+            LaunchedEffect(homeX) { offsetX.snapTo(homeX) }
+
+            Row(
+                Modifier
+                    .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                    .pointerInput(selected, cardWPx) {
+                        var acc = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { acc = 0f },
+                            onDragEnd = {
+                                val moved = offsetX.value - homeX
+                                if (abs(acc) > 24f && abs(moved) > cardWPx * 0.22f) {
+                                    val forward = moved < 0f          // 向左拖 = 看下一天
+                                    val target = homeX + (if (forward) -1f else 1f) * (cardWPx + gapPx)
+                                    scope.launch {
+                                        offsetX.animateTo(
+                                            target,
+                                            tween(190, easing = FastOutSlowInEasing)
+                                        )
+                                        vm.select(selected.plusDays(if (forward) 1L else -1L))
+                                        offsetX.snapTo(homeX)
+                                    }
+                                    fx.page(forward)
+                                } else {
+                                    scope.launch {
+                                        offsetX.animateTo(
+                                            homeX,
+                                            spring(dampingRatio = 0.78f, stiffness = 420f)
+                                        )
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                scope.launch { offsetX.animateTo(homeX, tween(160)) }
+                            }
+                        ) { change, dragAmount ->
+                            change.consume()
+                            acc += dragAmount
+                            // 拖动时**实时跟手**（用 launch + snapTo，官方推荐写法）
+                            scope.launch { offsetX.snapTo(offsetX.value + dragAmount) }
+                        }
+                    }
+            ) {
+                DayCard(
+                    date = selected.minusDays(1),
+                    input = input,
+                    today = today,
+                    isCenter = false,
+                    width = cardW,
+                    onEditEvent = onEditEvent,
+                    onToggleDone = { vm.toggleDone(it) }
+                )
+                Spacer(Modifier.width(CARD_GAP))
+                DayCard(
+                    date = selected,
+                    input = input,
+                    today = today,
+                    isCenter = true,
+                    width = cardW,
+                    onEditEvent = onEditEvent,
+                    onToggleDone = { vm.toggleDone(it) }
+                )
+                Spacer(Modifier.width(CARD_GAP))
+                DayCard(
+                    date = selected.plusDays(1),
+                    input = input,
+                    today = today,
+                    isCenter = false,
+                    width = cardW,
+                    onEditEvent = onEditEvent,
+                    onToggleDone = { vm.toggleDone(it) }
+                )
+            }
         }
+
+        // ── 滑动提示（两侧虚影已经很直观，这行只做补充） ──
+        Text(
+            "← 左右滑动切换日期 →",
+            fontSize = 11.5.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
+/**
+ * 一张日期卡片。isCenter=false 时降透明度 + 轻微缩小，成为"侧边虚影"。
+ */
+@Composable
+private fun DayCard(
+    date: LocalDate,
+    input: DayInput,
+    today: LocalDate,
+    isCenter: Boolean,
+    width: Dp,
+    onEditEvent: (Long) -> Unit,
+    onToggleDone: (EventOccurrence) -> Unit
+) {
+    val shape = RoundedCornerShape(22.dp)
+    Box(
+        Modifier
+            .width(width)
+            .fillMaxHeight()
+            .graphicsLayer {
+                alpha = if (isCenter) 1f else 0.42f
+                val s = if (isCenter) 1f else 0.955f
+                scaleX = s
+                scaleY = s
+            }
+            .then(
+                if (isCenter) Modifier.shadow(10.dp, shape, clip = false) else Modifier
+            )
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                shape
+            )
+    ) {
+        DayContent(
+            date = date,
+            input = input,
+            today = today,
+            onEditEvent = onEditEvent,
+            onToggleDone = onToggleDone
+        )
+    }
+}
 
 @Composable
-private fun DayPage(
+private fun DayContent(
     date: LocalDate,
     input: DayInput,
     today: LocalDate,
@@ -207,17 +357,15 @@ private fun DayPage(
         Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp)
-            .padding(bottom = 24.dp)
+            .padding(horizontal = 16.dp)
+            .padding(top = 16.dp, bottom = 20.dp)
     ) {
-        Spacer(Modifier.height(10.dp))
-
         // ── 大日期 ──
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 "${date.dayOfMonth}",
-                fontSize = 60.sp,
-                lineHeight = 62.sp,
+                fontSize = 56.sp,
+                lineHeight = 58.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -244,7 +392,7 @@ private fun DayPage(
                     .padding(bottom = 8.dp)
                     .clip(RoundedCornerShape(20.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(horizontal = 12.dp, vertical = 5.dp)
+                    .padding(horizontal = 11.dp, vertical = 5.dp)
             )
         }
 
@@ -256,11 +404,12 @@ private fun DayPage(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(vertical = 14.dp),
+                .padding(vertical = 13.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // 注意：Kotlin 标识符允许汉字，写成 "$ganZhiYear年" 会把「年」吞进变量名 → 必须用 ${}
             Text(
-                "$ganZhiYear年 · $ganZhiMonth月 · $ganZhiDay日",
+                "${ganZhiYear}年 · ${ganZhiMonth}月 · ${ganZhiDay}日",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -274,7 +423,7 @@ private fun DayPage(
             )
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
 
         // ── 详细信息 ──
         val term = nearestSolarTerm(date)
@@ -308,7 +457,7 @@ private fun DayPage(
             "第 ${date.dayOfYear} 天 · 还剩 ${date.lengthOfYear() - date.dayOfYear} 天"
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
 
         // ── 当天日程 ──
         Text(

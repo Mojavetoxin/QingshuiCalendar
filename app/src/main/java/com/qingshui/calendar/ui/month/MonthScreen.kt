@@ -224,10 +224,10 @@ fun MonthScreen(
                                     if (forward) month.plusMonths(1) else month.minusMonths(1)
                                 )
                             } else if (!zoomed && dragY > 50f) {
-                                feedback.select()
+                                feedback.expand()
                                 zoomed = true
                             } else if (zoomed && dragY < -50f) {
-                                feedback.tick()
+                                feedback.collapse()
                                 zoomed = false
                             }
                             dragX = 0f
@@ -569,7 +569,7 @@ fun EventRow(
         Checkbox(
             checked = event.status == 1,
             onCheckedChange = { checked ->
-                if (checked) fx.confirm() else fx.tick()
+                if (checked) fx.success() else fx.tick()
                 onToggleDone()
             }
         )

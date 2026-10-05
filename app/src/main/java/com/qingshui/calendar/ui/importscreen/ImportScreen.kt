@@ -39,6 +39,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -246,6 +247,17 @@ fun ImportScreen(
 
     val fx = LocalAppFeedback.current
     var showTimePicker by remember { mutableStateOf(false) }
+
+    // 一句话解析失败 → 一声"不行"；文档导入有结果 → 成功/失败各一声
+    LaunchedEffect(quickResult) {
+        val r = quickResult
+        if (r != null && !r.ok) fx.error()
+    }
+    LaunchedEffect(summary) {
+        if (summary.isNotBlank()) {
+            if (summary.contains("失败")) fx.error() else fx.success()
+        }
+    }
 
     val docPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
