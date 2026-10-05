@@ -33,6 +33,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qingshui.calendar.data.local.entity.EventEntity
 import com.qingshui.calendar.di.AppContainer
 import com.qingshui.calendar.domain.calendar.CalendarUtils
+import com.qingshui.calendar.domain.calendar.LunarCalendar
 import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.ui.components.EmptyHint
 import com.qingshui.calendar.ui.month.EventRow
@@ -151,7 +152,8 @@ fun EventListScreen(
                 groups.forEach { (date, list) ->
                     item(key = "header_${date.toEpochDay()}") {
                         Text(
-                            CalendarUtils.dateHeader(date, today),
+                            CalendarUtils.dateHeader(date, today) +
+                                " · " + LunarCalendar.ganZhiYear(date.year) + "年",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)

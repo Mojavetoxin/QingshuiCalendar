@@ -5,6 +5,7 @@ package com.qingshui.calendar.ui.year
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -30,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,10 +43,14 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.qingshui.calendar.di.AppContainer
 import com.qingshui.calendar.domain.calendar.CalendarUtils
+import com.qingshui.calendar.domain.calendar.LunarCalendar
 import com.qingshui.calendar.domain.model.AppSettings
+import com.qingshui.calendar.domain.model.EventOccurrence
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -51,6 +58,7 @@ import java.time.temporal.ChronoUnit
 
 // ---------------------------------------------------------------- ViewModel
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class YearViewModel(private val c: AppContainer) : ViewModel() {
 
     val baseYear: Int = LocalDate.now().year
@@ -61,9 +69,20 @@ class YearViewModel(private val c: AppContainer) : ViewModel() {
     private val _year = MutableStateFlow(baseYear)
     val year: StateFlow<Int> = _year.asStateFlow()
 
+    /** 整年的日程出现（按日期分组），用于迷你月标注「有日程」的小红点 */
+    private val _occurrences = MutableStateFlow<Map<LocalDate, List<EventOccurrence>>>(emptyMap())
+    val occurrences: StateFlow<Map<LocalDate, List<EventOccurrence>>> = _occurrences.asStateFlow()
+
     init {
         viewModelScope.launch {
             c.settingsRepository.settings.collect { _settings.value = it }
+        }
+        viewModelScope.launch {
+            _year.flatMapLatest { y ->
+                c.eventRepository.observeBetween(LocalDate.of(y, 1, 1), LocalDate.of(y, 12, 31))
+            }.collect { list ->
+                _occurrences.value = list.groupBy { it.date }
+            }
         }
     }
 
@@ -89,6 +108,7 @@ fun YearScreen(
     val vm: YearViewModel = viewModel(factory = factory)
     val settings by vm.settings.collectAsState()
     val year by vm.year.collectAsState()
+    val occurrences by vm.occurrences.collectAsState()
 
     val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
 
@@ -108,7 +128,7 @@ fun YearScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${year} 年",
+                "${year} 年 · ${LunarCalendar.ganZhiYear(year)}年",
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
@@ -126,6 +146,7 @@ fun YearScreen(
                 year = y,
                 settings = settings,
                 today = LocalDate.now(),
+                occurrences = occurrences,
                 onClickDay = onJumpToMonth
             )
         }
@@ -137,6 +158,7 @@ private fun YearGrid(
     year: Int,
     settings: AppSettings,
     today: LocalDate,
+    occurrences: Map<LocalDate, List<EventOccurrence>>,
     onClickDay: (LocalDate) -> Unit
 ) {
     Column(
@@ -153,6 +175,7 @@ private fun YearGrid(
                         month = YearMonth.of(year, m),
                         settings = settings,
                         today = today,
+                        occurrences = occurrences,
                         onClickDay = onClickDay,
                         modifier = Modifier
                             .weight(1f)
@@ -169,6 +192,7 @@ private fun MiniMonth(
     month: YearMonth,
     settings: AppSettings,
     today: LocalDate,
+    occurrences: Map<LocalDate, List<EventOccurrence>>,
     onClickDay: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -215,30 +239,44 @@ private fun MiniMonth(
                         weekend -> MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
                         else -> MaterialTheme.colorScheme.onSurface
                     }
-                    Box(
+                    Column(
                         Modifier
                             .weight(1f)
-                            .padding(vertical = 1.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(vertical = 1.dp)
+                            .clickable { onClickDay(d) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        if (isToday) {
-                            Box(
-                                Modifier
-                                    .width(16.dp)
-                                    .height(16.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
+                        Box(
+                            Modifier.width(16.dp).height(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (isToday) {
+                                Box(
+                                    Modifier
+                                        .width(16.dp)
+                                        .height(16.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary)
+                                )
+                            }
+                            Text(
+                                "${d.dayOfMonth}",
+                                fontSize = 9.sp,
+                                lineHeight = 12.sp,
+                                color = color,
+                                textAlign = TextAlign.Center
                             )
                         }
-                        Text(
-                            "${d.dayOfMonth}",
-                            fontSize = 9.sp,
-                            lineHeight = 12.sp,
-                            color = color,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .clickable { onClickDay(d) }
-                                .padding(2.dp)
+                        // 有日程的日子：下方标一个红点
+                        Box(
+                            Modifier
+                                .size(3.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (occurrences[d].isNullOrEmpty()) Color.Transparent
+                                    else MaterialTheme.colorScheme.error
+                                )
                         )
                     }
                 }
