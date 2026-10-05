@@ -12,13 +12,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -187,6 +188,7 @@ fun DayScreen(
         ) {
             val density = LocalDensity.current
             val cardW: Dp = maxWidth - PEEK * 2
+            val cardH: Dp = maxHeight          // weight(1f) 槽位给了有界高度，卡片直接用它
             val cardWPx = with(density) { cardW.toPx() }
             val gapPx = with(density) { CARD_GAP.toPx() }
             val peekPx = with(density) { PEEK.toPx() }
@@ -195,12 +197,24 @@ fun DayScreen(
 
             val scope = rememberCoroutineScope()
             val offsetX = remember { Animatable(homeX) }
-            LaunchedEffect(homeX) { offsetX.snapTo(homeX) }
+            // 只在「当前没有正在跑的动画」时归位，避免把用户拖到一半的卡片弹回去
+            LaunchedEffect(homeX) {
+                if (offsetX.value != homeX && !offsetX.isRunning) offsetX.snapTo(homeX)
+            }
 
+            // ★ wrapContentSize(unbounded = true) 是关键，别删：
+            // Row 的默认行为会用父级的 maxWidth(≈屏宽) 把 3 张卡「夹断」，
+            // 第 2、3 张卡被排到父级宽度之外，Row 自身只报一个屏宽；
+            // 再叠加下面 homeX ≈ -1 张卡宽的 offset，整行就被推出屏幕外 —— 界面看起来全空（实测过）。
+            // 解开宽度约束后，Row 才能真的线性排开 3 张卡，offset 平移才有意义。
+            val curSelected by rememberUpdatedState(selected)
             Row(
                 Modifier
+                    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
                     .offset { IntOffset(offsetX.value.roundToInt(), 0) }
-                    .pointerInput(selected, cardWPx) {
+                    // 只以 cardWPx 为 key：如果把 selected 也当 key，切换日期会让手势块
+                    // 在切换动画中途被取消重建，offsetX 可能停在「偏一整张卡」的位置回不来。
+                    .pointerInput(cardWPx) {
                         var acc = 0f
                         detectHorizontalDragGestures(
                             onDragStart = { acc = 0f },
@@ -214,7 +228,7 @@ fun DayScreen(
                                             target,
                                             tween(190, easing = FastOutSlowInEasing)
                                         )
-                                        vm.select(selected.plusDays(if (forward) 1L else -1L))
+                                        vm.select(curSelected.plusDays(if (forward) 1L else -1L))
                                         offsetX.snapTo(homeX)
                                     }
                                     fx.page(forward)
@@ -244,6 +258,7 @@ fun DayScreen(
                     today = today,
                     isCenter = false,
                     width = cardW,
+                    height = cardH,
                     onEditEvent = onEditEvent,
                     onToggleDone = { vm.toggleDone(it) }
                 )
@@ -254,6 +269,7 @@ fun DayScreen(
                     today = today,
                     isCenter = true,
                     width = cardW,
+                    height = cardH,
                     onEditEvent = onEditEvent,
                     onToggleDone = { vm.toggleDone(it) }
                 )
@@ -264,6 +280,7 @@ fun DayScreen(
                     today = today,
                     isCenter = false,
                     width = cardW,
+                    height = cardH,
                     onEditEvent = onEditEvent,
                     onToggleDone = { vm.toggleDone(it) }
                 )
@@ -293,6 +310,7 @@ private fun DayCard(
     today: LocalDate,
     isCenter: Boolean,
     width: Dp,
+    height: Dp,
     onEditEvent: (Long) -> Unit,
     onToggleDone: (EventOccurrence) -> Unit
 ) {
@@ -300,7 +318,9 @@ private fun DayCard(
     Box(
         Modifier
             .width(width)
-            .fillMaxHeight()
+            // 用父级算好的明确高度，不用 fillMaxHeight()（Row 的高度由子项决定，
+            // 子项再 fillMaxHeight() 会绕成死循环；放进 verticalScroll 还会直接抛异常）
+            .height(height)
             .graphicsLayer {
                 alpha = if (isCenter) 1f else 0.42f
                 val s = if (isCenter) 1f else 0.955f

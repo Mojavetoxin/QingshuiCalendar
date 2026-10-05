@@ -205,7 +205,9 @@ fun MonthScreen(
         // 月网格：**直接渲染当前月**。
         // 刻意不用 HorizontalPager —— 它的每一页跑在子组合里，页面不会随外部数据重组，
         // 结果日程圆点永远不出现、下拉放大也切不动（实测踩过两次）。直接渲染与下面的列表同源，天然同步。
-        // 手势：左右横滑翻月（>60dp），下拉放大 / 上滑收回整月。
+        // 手势：左右横滑翻月（>60dp）；竖向**下滑 = 拉开（进入周视图），上滑 = 收起（回到整月）**，
+        // 与系统/地图类 App 的习惯一致（下拉展、上滑收）。
+        // 注意：zoomed=true 表示「周视图」，此时网格只留一行、格子变高，是「拉开」后的状态。
         val gridHeight by animateDpAsState(
             targetValue = if (zoomed) 134.dp else 400.dp,
             label = "gridHeight"
@@ -224,9 +226,11 @@ fun MonthScreen(
                                     if (forward) month.plusMonths(1) else month.minusMonths(1)
                                 )
                             } else if (!zoomed && dragY > 50f) {
+                                // 手指下滑 → 拉开（整月 → 周视图）
                                 feedback.expand()
                                 zoomed = true
                             } else if (zoomed && dragY < -50f) {
+                                // 手指上滑 → 收起（周视图 → 整月）
                                 feedback.collapse()
                                 zoomed = false
                             }
@@ -249,6 +253,39 @@ fun MonthScreen(
                 onSelect = { feedback.tick(); vm.select(it) },
                 weekOnly = zoomed
             )
+        }
+
+        // 手势兜底入口：万一竖滑方向在真机上仍不合手，「点这里」也能切。
+        // 一行小横条 + 文案，点整行都能切。
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (zoomed) {
+                        feedback.collapse(); zoomed = false
+                    } else {
+                        feedback.expand(); zoomed = true
+                    }
+                }
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    Modifier
+                        .width(44.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                )
+                Text(
+                    if (zoomed) "收起整月 ⌃" else "拉开本周 ⌄",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
         }
 
         HorizontalDivider(

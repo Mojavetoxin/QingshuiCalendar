@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.qingshui.calendar.di.AppContainer
@@ -219,14 +220,16 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
             )
         }
 
-        FieldRow("日期") {
+        // ↓↓↓ 这 5 行的 onClick 是唯一点开下面 5 个弹窗的入口。
+        // 曾经漏掉过（onClick 默认 null → 整行不可点，弹窗成死代码），别再删。
+        FieldRow("日期", onClick = { fx.tick(); showDate = true }) {
             Text("${d.date.year}年${d.date.monthValue}月${d.date.dayOfMonth}日 ${WEEK_LABELS[d.date.dayOfWeek.value - 1]}")
         }
         if (!d.allDay) {
-            FieldRow("开始时间") {
+            FieldRow("开始时间", onClick = { fx.tick(); showStart = true }) {
                 Text(String.format("%02d:%02d", d.startTime.hour, d.startTime.minute))
             }
-            FieldRow("结束时间") {
+            FieldRow("结束时间", onClick = { fx.tick(); showEnd = true }) {
                 Text(String.format("%02d:%02d", d.endTime.hour, d.endTime.minute))
             }
         }
@@ -237,13 +240,13 @@ fun EventEditScreen(vm: EventEditViewModel, onDone: () -> Unit) {
             label = { Text("地点（可选）") },
             singleLine = true
         )
-        FieldRow("提醒") {
+        FieldRow("提醒", onClick = { fx.tick(); showReminder = true }) {
             Text(
                 ReminderPresets.labelOf(d.reminderMinutes),
                 color = MaterialTheme.colorScheme.primary
             )
         }
-        FieldRow("重复") {
+        FieldRow("重复", onClick = { fx.tick(); showRepeat = true }) {
             Text(repeatLabel(d.repeat), color = MaterialTheme.colorScheme.primary)
         }
         if (d.repeat == RepeatType.CUSTOM) {
@@ -416,11 +419,20 @@ private fun FieldRow(
     val base = Modifier.fillMaxWidth()
     val rowModifier = if (onClick != null) base.clickable(onClick = onClick) else base
     Row(
-        rowModifier.padding(horizontal = 16.dp, vertical = 14.dp),
+        rowModifier.padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         content()
+        // 可点的行给一个「›」暗示，否则用户不知道这里能点开选择器
+        if (onClick != null) {
+            Text(
+                "›",
+                fontSize = 20.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(start = 8.dp)
+            )
+        }
     }
 }
 
