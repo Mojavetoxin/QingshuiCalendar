@@ -178,11 +178,18 @@ fun MonthScreen(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                "${month.year} 年 ${month.monthValue} 月",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "${month.year} 年 ${month.monthValue} 月",
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(
+                    LunarCalendar.ganZhiYear(month.year) + "年" +
+                        LunarCalendar.lunarMonthName(month.atDay(1)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             IconButton(onClick = { vm.setMonth(month.minusMonths(1)) }) {
                 Text("‹", fontSize = 26.sp)
             }

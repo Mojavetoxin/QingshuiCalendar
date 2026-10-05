@@ -107,6 +107,28 @@ object LunarCalendar {
     /** 干支纪年，如 2026 -> 丙午 */
     fun ganZhiYear(y: Int): String = GAN[(y - 4).mod(10)] + ZHI[(y - 4).mod(12)]
 
+    /**
+     * 干支纪日，如 2026-10-05 -> 壬子（界面显示时补「日」字）。
+     * 基准：2000-01-01 为戊午日（干支序号 54），每过一天序号 +1，六十天一循环。
+     */
+    fun ganZhiDay(date: LocalDate): String {
+        val diff = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.of(2000, 1, 1), date)
+        val idx = ((54 + diff) % 60 + 60) % 60
+        return GAN[(idx % 10).toInt()] + ZHI[(idx % 12).toInt()]
+    }
+
+    /** 农历月日连写，如「八月廿五」；越界返回空串 */
+    fun lunarMonthDay(date: LocalDate): String {
+        val l = from(date) ?: return ""
+        return monthName(l) + dayName(l.day)
+    }
+
+    /** 只取农历月名，如「八月」；越界返回空串 */
+    fun lunarMonthName(date: LocalDate): String {
+        val l = from(date) ?: return ""
+        return monthName(l)
+    }
+
     fun animalYear(y: Int): String = ANIMALS[(y - 4).mod(12)]
 
     // ---------- 节气 ----------

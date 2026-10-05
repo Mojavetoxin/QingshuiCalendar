@@ -153,7 +153,9 @@ fun EventListScreen(
                     item(key = "header_${date.toEpochDay()}") {
                         Text(
                             CalendarUtils.dateHeader(date, today) +
-                                " · " + LunarCalendar.ganZhiYear(date.year) + "年",
+                                " · " + LunarCalendar.ganZhiYear(date.year) + "年" +
+                                LunarCalendar.lunarMonthDay(date) +
+                                " · " + LunarCalendar.ganZhiDay(date) + "日",
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 2.dp)
