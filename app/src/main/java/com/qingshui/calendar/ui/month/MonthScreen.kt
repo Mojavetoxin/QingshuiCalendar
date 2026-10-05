@@ -2,7 +2,9 @@
 
 package com.qingshui.calendar.ui.month
 
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.clickable
@@ -63,6 +65,7 @@ import com.qingshui.calendar.domain.model.EventOccurrence
 import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.domain.model.RepeatType
 import com.qingshui.calendar.ui.components.EmptyHint
+import com.qingshui.calendar.ui.components.rememberClickFeedback
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -180,13 +183,31 @@ fun MonthScreen(
     var zoomed by remember { mutableStateOf(false) }
     var dragAcc by remember { mutableStateOf(0f) }
 
-    Column(Modifier.fillMaxSize()) {
+    val feedback = rememberClickFeedback()
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(zoomed) {
+                detectVerticalDragGestures(
+                    onDragEnd = { dragAcc = 0f },
+                    onDragCancel = { dragAcc = 0f }
+                ) { _, dragAmount ->
+                    dragAcc += dragAmount
+                    if (!zoomed && dragAcc > 50f) {
+                        feedback(); zoomed = true; dragAcc = 0f
+                    } else if (zoomed && dragAcc < -50f) {
+                        feedback(); zoomed = false; dragAcc = 0f
+                    }
+                }
+            }
+    ) {
         // 顶栏：左右翻页 + 居中标题（公历 + 干支农历）+ 今天
         Row(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { vm.setMonth(month.minusMonths(1)) }) {
+            IconButton(onClick = { feedback(); vm.setMonth(month.minusMonths(1)) }) {
                 Text("‹", fontSize = 26.sp)
             }
             Column(
@@ -207,34 +228,23 @@ fun MonthScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { vm.goToToday() }) { Text("今天") }
-            IconButton(onClick = { vm.setMonth(month.plusMonths(1)) }) {
+            TextButton(onClick = { feedback(); vm.goToToday() }) { Text("今天") }
+            IconButton(onClick = { feedback(); vm.setMonth(month.plusMonths(1)) }) {
                 Text("›", fontSize = 26.sp)
             }
         }
 
         // 月网格（横向翻页）：下拉放大成周视图，上滑收回整月
         // 固定高度 = 表头 + 行数 × 行高（周视图行更高，显示当天日程标题）
+        val gridHeight by animateDpAsState(
+            targetValue = if (zoomed) 128.dp else 358.dp,
+            label = "gridHeight"
+        )
         HorizontalPager(
             state = pagerState,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (zoomed) 124.dp else 358.dp)
-                .pointerInput(zoomed) {
-                    detectVerticalDragGestures(
-                        onDragEnd = { dragAcc = 0f },
-                        onDragCancel = { dragAcc = 0f }
-                    ) { _, dragAmount ->
-                        dragAcc += dragAmount
-                        if (!zoomed && dragAcc > 60f) {
-                            zoomed = true
-                            dragAcc = 0f
-                        } else if (zoomed && dragAcc < -60f) {
-                            zoomed = false
-                            dragAcc = 0f
-                        }
-                    }
-                }
+                .height(gridHeight)
         ) { page ->
             val m = vm.baseMonth.plusMonths((page - CENTER).toLong())
             MonthGrid(
@@ -243,7 +253,7 @@ fun MonthScreen(
                 today = LocalDate.now(),
                 selected = selected,
                 occurrences = occurrences,
-                onSelect = { vm.select(it) },
+                onSelect = { feedback(); vm.select(it) },
                 weekOnly = zoomed
             )
         }
@@ -253,42 +263,45 @@ fun MonthScreen(
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
         )
 
-        // 选中日期的日程列表：直接铺在下方（点条目进编辑，勾选框切换完成）
+        // 选中日期起的日程：连续列出后续几天，可以直接看到未来安排
         val selDay = selected
         if (selDay == null) {
             EmptyHint("点一个日期查看当天日程")
         } else {
-            val dayEvents = occurrences[selDay].orEmpty()
+            val upcoming = occurrences.filterKeys { !it.isBefore(selDay) }.toSortedMap()
             Column(
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    text = CalendarUtils.dateHeader(selDay, LocalDate.now()) +
-                        " · " + LunarCalendar.ganZhiYear(selDay.year) + "年" +
-                        LunarCalendar.lunarMonthDay(selDay) +
-                        " · " + LunarCalendar.ganZhiDay(selDay) + "日",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 2.dp)
-                )
-                if (dayEvents.isEmpty()) {
+                if (upcoming.isEmpty()) {
                     Text(
-                        "这一天还没有日程 —— 点右下角按钮新建",
+                        "这一天和之后还没有日程 —— 点右下角按钮新建",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 20.dp, top = 4.dp, bottom = 12.dp)
+                        modifier = Modifier.padding(start = 20.dp, top = 12.dp, bottom = 12.dp)
                     )
                 } else {
-                    dayEvents.forEach { o ->
-                        EventRow(
-                            event = o.event,
-                            occurrenceStart = o.date,
-                            onClick = { onEditEvent(o.event.id) },
-                            onToggleDone = { vm.toggleDone(o) }
+                    upcoming.forEach { entry ->
+                        val d = entry.key
+                        Text(
+                            text = CalendarUtils.dateHeader(d, LocalDate.now()) +
+                                " · " + LunarCalendar.ganZhiYear(d.year) + "年" +
+                                LunarCalendar.lunarMonthDay(d) +
+                                " · " + LunarCalendar.ganZhiDay(d) + "日",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 2.dp)
                         )
+                        entry.value.forEach { o ->
+                            EventRow(
+                                event = o.event,
+                                occurrenceStart = o.date,
+                                onClick = { onEditEvent(o.event.id) },
+                                onToggleDone = { vm.toggleDone(o) }
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(76.dp))
@@ -545,15 +558,31 @@ fun EventRow(
     onClick: () -> Unit,
     onToggleDone: () -> Unit
 ) {
-    val repoLike = remember { RowTimeFormatter }
     Row(
         Modifier
             .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+                RoundedCornerShape(12.dp)
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(start = 6.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Checkbox(checked = event.status == 1, onCheckedChange = { onToggleDone() })
+        // 左侧颜色竖条（与预览页一致）
+        Box(
+            Modifier
+                .width(4.dp)
+                .height(40.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(androidx.compose.ui.graphics.Color(EventColors.argb(event.color.toLong())))
+        )
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 event.title,
@@ -570,7 +599,10 @@ fun EventRow(
                 if (event.repeatType != RepeatType.NONE.name) {
                     add(runCatching { RepeatType.valueOf(event.repeatType).label }.getOrDefault(""))
                 }
-                if (event.location.isNotBlank()) add(event.location)
+                if (event.reminderMinutes >= 0) {
+                    add("提醒 " + com.qingshui.calendar.domain.model.ReminderPresets
+                        .labelOf(event.reminderMinutes))
+                }
             }.filter { it.isNotBlank() }
             Text(
                 listOf(timeText, *extra.toTypedArray()).joinToString(" · "),
@@ -579,6 +611,15 @@ fun EventRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (event.location.isNotBlank()) {
+                Text(
+                    "地点：" + event.location,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             if (event.description.isNotBlank()) {
                 Text(
                     event.description,
@@ -589,12 +630,6 @@ fun EventRow(
                 )
             }
         }
-        Box(
-            Modifier
-                .size(10.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(androidx.compose.ui.graphics.Color(EventColors.argb(event.color.toLong())))
-        )
     }
 }
 

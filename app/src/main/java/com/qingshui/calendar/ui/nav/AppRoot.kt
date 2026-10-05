@@ -45,6 +45,7 @@ import com.qingshui.calendar.ui.list.EventListScreen
 import com.qingshui.calendar.ui.list.EventListViewModel
 import com.qingshui.calendar.ui.month.MonthScreen
 import com.qingshui.calendar.ui.month.MonthViewModel
+import com.qingshui.calendar.ui.components.rememberClickFeedback
 import com.qingshui.calendar.ui.settings.SettingsScreen
 import com.qingshui.calendar.ui.settings.SettingsViewModel
 import com.qingshui.calendar.ui.year.YearScreen
@@ -110,6 +111,8 @@ fun AppRoot(c: AppContainer) {
         }
     }
 
+    val feedback = rememberClickFeedback()
+
     fun goTab(route: String) {
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) { saveState = true }
@@ -121,7 +124,9 @@ fun AppRoot(c: AppContainer) {
     Scaffold(
         floatingActionButton = {
             if (currentRoute == "tab_month" || currentRoute == "tab_list") {
-                FloatingActionButton(onClick = { navController.navigate("event_edit/-1") }) {
+                FloatingActionButton(onClick = {
+                    feedback(); navController.navigate("event_edit/-1")
+                }) {
                     Icon(Icons.Filled.Add, contentDescription = "新建日程")
                 }
             }
@@ -132,7 +137,7 @@ fun AppRoot(c: AppContainer) {
                     TABS.forEach { tab ->
                         NavigationBarItem(
                             selected = currentRoute == tab.route,
-                            onClick = { goTab(tab.route) },
+                            onClick = { feedback(); goTab(tab.route) },
                             icon = {
                                 when {
                                     tab.vector != null -> Icon(tab.vector, contentDescription = tab.label)
