@@ -49,6 +49,8 @@ import com.qingshui.calendar.ui.month.MonthScreen
 import com.qingshui.calendar.ui.month.MonthViewModel
 import com.qingshui.calendar.ui.components.LocalAppFeedback
 import com.qingshui.calendar.ui.components.rememberAppFeedback
+import com.qingshui.calendar.ui.day.DayScreen
+import com.qingshui.calendar.ui.day.DayViewModel
 import com.qingshui.calendar.ui.settings.SettingsScreen
 import com.qingshui.calendar.ui.settings.SettingsViewModel
 import com.qingshui.calendar.ui.year.YearScreen
@@ -64,6 +66,7 @@ class VmFactory(private val c: AppContainer) : ViewModelProvider.Factory {
         modelClass.isAssignableFrom(EventListViewModel::class.java) -> EventListViewModel(c) as T
         modelClass.isAssignableFrom(ImportViewModel::class.java) -> ImportViewModel(c) as T
         modelClass.isAssignableFrom(SettingsViewModel::class.java) -> SettingsViewModel(c) as T
+        modelClass.isAssignableFrom(DayViewModel::class.java) -> DayViewModel(c) as T
         else -> throw IllegalArgumentException("Unknown ViewModel: $modelClass")
     }
 }
@@ -175,7 +178,8 @@ private fun AppScaffold(c: AppContainer) {
             composable("tab_month") {
                 MonthScreen(
                     factory = factory,
-                    onEditEvent = { navController.navigate("event_edit/$it") }
+                    onEditEvent = { navController.navigate("event_edit/$it") },
+                    onOpenDay = { navController.navigate("day") }
                 )
             }
             composable("tab_year") {
@@ -201,6 +205,13 @@ private fun AppScaffold(c: AppContainer) {
             }
             composable("tab_settings") {
                 SettingsScreen(factory = factory)
+            }
+            composable("day") {
+                DayScreen(
+                    factory = factory,
+                    onBack = { navController.popBackStack() },
+                    onEditEvent = { navController.navigate("event_edit/$it") }
+                )
             }
             composable("event_edit/{eventId}") { entry ->
                 val id = entry.arguments?.getString("eventId")?.toLongOrNull() ?: -1L

@@ -157,7 +157,8 @@ private const val CENTER = 12000
 @Composable
 fun MonthScreen(
     factory: ViewModelProvider.Factory,
-    onEditEvent: (Long) -> Unit
+    onEditEvent: (Long) -> Unit,
+    onOpenDay: () -> Unit = {}
 ) {
     val vm: MonthViewModel = viewModel(factory = factory)
     val month by vm.month.collectAsState()
@@ -226,8 +227,12 @@ fun MonthScreen(
             IconButton(onClick = { feedback.page(false); vm.setMonth(month.minusMonths(1)) }) {
                 Text("‹", fontSize = 26.sp)
             }
+            // 点标题＝回到今天（原来的「今天」按钮位置让给了「日历」）
             Column(
-                Modifier.weight(1f),
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { feedback.tick(); vm.goToToday() },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -245,7 +250,7 @@ fun MonthScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            TextButton(onClick = { feedback.select(); vm.goToToday() }) { Text("今天") }
+            TextButton(onClick = { feedback.select(); onOpenDay() }) { Text("日历") }
             IconButton(onClick = { feedback.page(true); vm.setMonth(month.plusMonths(1)) }) {
                 Text("›", fontSize = 26.sp)
             }

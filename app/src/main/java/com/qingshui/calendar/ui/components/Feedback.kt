@@ -3,7 +3,6 @@ package com.qingshui.calendar.ui.components
 import android.os.Build
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
-import android.view.SoundEffectConstants
 import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -73,29 +72,19 @@ private class ViewFeedback(
             // 警示音效不与普通点击争抢节流，单独放行
             lastAt = SystemClock.uptimeMillis()
             if (hapticOn) view.performHapticFeedback(hapticConstant(kind))
-            if (soundOn) view.playSoundEffect(SoundEffectConstants.CLICK)
+            if (soundOn) SoundKit.play(view, kind)
             return
         }
         if (!soundOn && !hapticOn) return
         if (!allow()) return
         if (hapticOn) view.performHapticFeedback(hapticConstant(kind))
-        if (soundOn) view.playSoundEffect(SoundEffectConstants.CLICK)
+        if (soundOn) SoundKit.play(view, kind)
     }
 
     override fun page(forward: Boolean) {
         if (!soundOn && !hapticOn) return
         if (!allow()) return
-        if (soundOn) {
-            // 方向音常量是 Android 13 才公开的；低版本退回普通点击音
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                view.playSoundEffect(
-                    if (forward) SoundEffectConstants.NAVIGATION_RIGHT
-                    else SoundEffectConstants.NAVIGATION_LEFT
-                )
-            } else {
-                view.playSoundEffect(SoundEffectConstants.CLICK)
-            }
-        }
+        if (soundOn) SoundKit.playPage(view, forward)
         if (hapticOn) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
     }
 
