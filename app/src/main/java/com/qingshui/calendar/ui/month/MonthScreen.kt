@@ -3,11 +3,10 @@
 package com.qingshui.calendar.ui.month
 
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,7 +26,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -36,9 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,12 +60,11 @@ import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.domain.model.EventColors
 import com.qingshui.calendar.domain.model.EventOccurrence
 import com.qingshui.calendar.domain.model.RepeatType
-import com.qingshui.calendar.domain.repeat.RepeatExpander
 import com.qingshui.calendar.ui.components.EmptyHint
 import com.qingshui.calendar.ui.components.LocalAppFeedback
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -151,9 +145,6 @@ class MonthViewModel(private val c: AppContainer) : ViewModel() {
 
 // ---------------------------------------------------------------- 屏幕
 
-private const val PAGES = 24000
-private const val CENTER = 12000
-
 @Composable
 fun MonthScreen(
     factory: ViewModelProvider.Factory,
@@ -162,64 +153,20 @@ fun MonthScreen(
 ) {
     val vm: MonthViewModel = viewModel(factory = factory)
     val month by vm.month.collectAsState()
-    // ★ 这三项不取成"值"，而是持有 State 对象、在真正用到的地方才读 .value。
-    //   Pager 的页面跑在子组合里，闭包捕获的值不会让页面订阅状态 → 页面会停在首次组合的数据。
-    val settingsState = vm.settings.collectAsState()
-    val occurrencesState = vm.occurrences.collectAsState()
-    val selectedState = vm.selected.collectAsState()
-    val selected = selectedState.value
-
-    val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
-
-    // Pager → VM（用户滑动）
-    LaunchedEffect(pagerState.currentPage) {
-        vm.setMonth(vm.baseMonth.plusMonths((pagerState.currentPage - CENTER).toLong()))
-    }
-    // VM → Pager（今天按钮 / 年视图跳月）
-    LaunchedEffect(month) {
-        val target = CENTER + ChronoUnit.MONTHS.between(vm.baseMonth, month).toInt()
-        if (target in 0 until PAGES && pagerState.currentPage != target) {
-            pagerState.animateScrollToPage(target)
-        }
-    }
+    val settings by vm.settings.collectAsState()
+    val occurrences by vm.occurrences.collectAsState()
+    val selected by vm.selected.collectAsState()
 
     var showDaySheet by remember { mutableStateOf(false) }
     // 下拉放大：false = 整月六行，true = 只显示选中日所在的一周（放大）
     var zoomed by remember { mutableStateOf(false) }
-    var dragAcc by remember { mutableStateOf(0f) }
+    var dragX by remember { mutableStateOf(0f) }
+    var dragY by remember { mutableStateOf(0f) }
 
     val feedback = LocalAppFeedback.current
 
-    // 把网格要用的动态数据打包成一个 State，在 Pager 页面内部读它 → 页面才会订阅并重组
-    val gridInput by remember {
-        derivedStateOf {
-            MonthGridInput(
-                settings = settingsState.value,
-                selected = selectedState.value,
-                occurrences = occurrencesState.value,
-                zoomed = zoomed
-            )
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(zoomed) {
-                detectVerticalDragGestures(
-                    onDragEnd = { dragAcc = 0f },
-                    onDragCancel = { dragAcc = 0f }
-                ) { _, dragAmount ->
-                    dragAcc += dragAmount
-                    if (!zoomed && dragAcc > 50f) {
-                        feedback.select(); zoomed = true; dragAcc = 0f
-                    } else if (zoomed && dragAcc < -50f) {
-                        feedback.tick(); zoomed = false; dragAcc = 0f
-                    }
-                }
-            }
-    ) {
-        // 顶栏：左右翻页 + 居中标题（公历 + 干支农历）+ 今天
+    Column(Modifier.fillMaxSize()) {
+        // 顶栏：左右翻页箭头 + 居中标题（公历 + 干支）+ 「日历」
         Row(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -227,7 +174,7 @@ fun MonthScreen(
             IconButton(onClick = { feedback.page(false); vm.setMonth(month.minusMonths(1)) }) {
                 Text("‹", fontSize = 26.sp)
             }
-            // 点标题＝回到今天（原来的「今天」按钮位置让给了「日历」）
+            // 点标题＝回到今天（原来「今天」按钮的位置让给了「日历」）
             Column(
                 Modifier
                     .weight(1f)
@@ -256,24 +203,52 @@ fun MonthScreen(
             }
         }
 
-        // 月网格（横向翻页）：下拉放大成周视图，上滑收回整月
-        // 固定高度 = 表头 + 行数 × 行高（周视图行更高，显示当天日程标题）
+        // 月网格：**直接渲染当前月**。
+        // 刻意不用 HorizontalPager —— 它的每一页跑在子组合里，页面不会随外部数据重组，
+        // 结果日程圆点永远不出现、下拉放大也切不动（实测踩过两次）。直接渲染与下面的列表同源，天然同步。
+        // 手势：左右横滑翻月（>60dp），下拉放大 / 上滑收回整月。
         val gridHeight by animateDpAsState(
             targetValue = if (zoomed) 134.dp else 400.dp,
             label = "gridHeight"
         )
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
+        Box(
+            Modifier
                 .fillMaxWidth()
                 .height(gridHeight)
-        ) { page ->
-            val m = vm.baseMonth.plusMonths((page - CENTER).toLong())
+                .pointerInput(zoomed, month) {
+                    detectDragGestures(
+                        onDragEnd = {
+                            if (abs(dragX) > 60f) {
+                                val forward = dragX < 0f
+                                feedback.page(forward)
+                                vm.setMonth(
+                                    if (forward) month.plusMonths(1) else month.minusMonths(1)
+                                )
+                            } else if (!zoomed && dragY > 50f) {
+                                feedback.select()
+                                zoomed = true
+                            } else if (zoomed && dragY < -50f) {
+                                feedback.tick()
+                                zoomed = false
+                            }
+                            dragX = 0f
+                            dragY = 0f
+                        },
+                        onDragCancel = { dragX = 0f; dragY = 0f }
+                    ) { _, dragAmount ->
+                        dragX += dragAmount.x
+                        dragY += dragAmount.y
+                    }
+                }
+        ) {
             MonthGrid(
-                month = m,
-                input = gridInput,
+                month = month,
+                settings = settings,
                 today = LocalDate.now(),
-                onSelect = { feedback.tick(); vm.select(it) }
+                selected = selected,
+                occurrences = occurrences,
+                onSelect = { feedback.tick(); vm.select(it) },
+                weekOnly = zoomed
             )
         }
 
@@ -287,8 +262,7 @@ fun MonthScreen(
         if (selDay == null) {
             EmptyHint("点一个日期查看当天日程")
         } else {
-            val upcoming = occurrencesState.value
-                .filterKeys { !it.isBefore(selDay) }.toSortedMap()
+            val upcoming = occurrences.filterKeys { !it.isBefore(selDay) }.toSortedMap()
             Column(
                 Modifier
                     .fillMaxWidth()
@@ -313,7 +287,9 @@ fun MonthScreen(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)
+                            modifier = Modifier.padding(
+                                start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp
+                            )
                         )
                         entry.value.forEach { o ->
                             EventRow(
@@ -339,7 +315,7 @@ fun MonthScreen(
         ) {
             DayEventsPanel(
                 date = d,
-                events = occurrencesState.value[d].orEmpty(),
+                events = occurrences[d].orEmpty(),
                 today = LocalDate.now(),
                 onEditEvent = { showDaySheet = false; onEditEvent(it) },
                 onToggleDone = { vm.toggleDone(it) }
@@ -348,32 +324,35 @@ fun MonthScreen(
     }
 }
 
+
 // ---------------------------------------------------------------- 月网格
 
 @Composable
 fun MonthGrid(
     month: YearMonth,
-    input: MonthGridInput,
+    settings: AppSettings,
     today: LocalDate,
-    onSelect: (LocalDate) -> Unit
+    selected: LocalDate?,
+    occurrences: Map<LocalDate, List<EventOccurrence>>,
+    onSelect: (LocalDate) -> Unit,
+    weekOnly: Boolean = false
 ) {
-    val settings = input.settings
     val wsMonday = settings.weekStartMonday
     val dates = remember(month, wsMonday) { CalendarUtils.gridDates(month, wsMonday) }
     val labels = remember(wsMonday) { CalendarUtils.weekdayLabels(wsMonday) }
     // 周视图：只保留包含选中日（或今天）的那一行
     val allWeeks = remember(dates) { dates.chunked(7) }
-    val weeks = remember(allWeeks, input.selected, today, input.zoomed) {
-        if (!input.zoomed) allWeeks
+    val weeks = remember(allWeeks, selected, today, weekOnly) {
+        if (!weekOnly) allWeeks
         else {
-            val anchor = input.selected ?: today
+            val anchor = selected ?: today
             val idx = allWeeks.indexOfFirst { w -> w.any { it == anchor } }
             listOf(allWeeks[if (idx >= 0) idx else 0])
         }
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 6.dp)) {
-        // 星期表头（13sp -> 14sp）
+        // 星期表头
         Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
             if (settings.showWeekNumber) Spacer(Modifier.width(24.dp))
             labels.forEach { label ->
@@ -390,7 +369,7 @@ fun MonthGrid(
         }
         // 6 行 x 7 列（周视图只渲染一行，行高更大并显示当天日程标题）
         weeks.forEach { week ->
-            Row(Modifier.fillMaxWidth().height(if (input.zoomed) 104.dp else 62.dp)) {
+            Row(Modifier.fillMaxWidth().height(if (weekOnly) 104.dp else 62.dp)) {
                 if (settings.showWeekNumber) {
                     Text(
                         "${CalendarUtils.weekNumber(week.first(), wsMonday)}",
@@ -403,11 +382,11 @@ fun MonthGrid(
                 week.forEach { d ->
                     DateCell(
                         date = d,
-                        detail = input.zoomed,
+                        detail = weekOnly,
                         inMonth = d.monthValue == month.monthValue,
                         today = today,
-                        selected = input.selected,
-                        events = input.occurrences[d].orEmpty(),
+                        selected = selected,
+                        events = occurrences[d].orEmpty(),
                         settings = settings,
                         onClick = { onSelect(d) },
                         modifier = Modifier.weight(1f)
@@ -418,22 +397,6 @@ fun MonthGrid(
     }
 }
 
-/**
- * 月网格的全部动态输入。
- *
- * ★ 为什么要打成一个对象、并且由外部以 State 的形式传入？
- * `HorizontalPager` 的每一页是在**子组合**里渲染的。如果页面闭包直接捕获
- * `occurrences` 这类"读出来的值"，页面就不会订阅这些状态——数据变了页面也不重组，
- * 于是日程圆点、选中高亮永远停在首次组合时的样子（首次组合时 occurrences 还是空 map）。
- * 实测症状：列表（普通 Column）正常更新，网格里的圆点却一个都不出现。
- * 修法：把输入打包成 State，在页面内部读 `.value`，页面才会订阅并在变化时重组。
- */
-data class MonthGridInput(
-    val settings: AppSettings,
-    val selected: LocalDate?,
-    val occurrences: Map<LocalDate, List<EventOccurrence>>,
-    val zoomed: Boolean
-)
 
 @Composable
 private fun DateCell(

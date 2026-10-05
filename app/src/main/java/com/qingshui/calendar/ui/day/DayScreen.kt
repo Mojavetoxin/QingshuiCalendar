@@ -1,7 +1,8 @@
 package com.qingshui.calendar.ui.day
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,8 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,14 +22,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,17 +45,15 @@ import com.qingshui.calendar.domain.model.EventOccurrence
 import com.qingshui.calendar.ui.components.EmptyHint
 import com.qingshui.calendar.ui.components.LocalAppFeedback
 import com.qingshui.calendar.ui.month.EventRow
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.temporal.ChronoUnit
-
-private const val PAGES = 4000
-private const val CENTER = 2000
 
 /** 单日视图的数据窗口（左右各 ±180 天，横滑够用） */
 private const val WINDOW_DAYS = 180L
@@ -106,11 +102,7 @@ class DayViewModel(private val c: AppContainer) : ViewModel() {
 }
 
 /**
- * 日视图页面要用的动态输入。
- *
- * ★ 必须由外部以 State 形式传入、在 Pager 页面内部才读：页面跑在子组合里，
- *   直接传"读出来的值"页面不会订阅状态，数据变了也不重组（月视图踩过一次）。
- */
+ * 日视图页面要用的动态输入（在 DayScreen 的普通组合里构造，天然随数据更新）。 */
 data class DayInput(
     val settings: AppSettings,
     val occurrences: Map<LocalDate, List<EventOccurrence>>
@@ -124,29 +116,12 @@ fun DayScreen(
 ) {
     val vm: DayViewModel = viewModel(factory = factory)
     val selected by vm.selected.collectAsState()
-    val settingsState = vm.settings.collectAsState()
-    val occurrencesState = vm.occurrences.collectAsState()
+    val settings by vm.settings.collectAsState()
+    val occurrences by vm.occurrences.collectAsState()
     val fx = LocalAppFeedback.current
     val today = remember { LocalDate.now() }
 
-    val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
-
-    val dayInput by remember {
-        derivedStateOf { DayInput(settingsState.value, occurrencesState.value) }
-    }
-
-    // 横滑 → 更新选中日期
-    LaunchedEffect(pagerState.currentPage) {
-        val d = vm.baseDate.plusDays((pagerState.currentPage - CENTER).toLong())
-        if (d != vm.selected.value) vm.select(d)
-    }
-    // 点"今天" → 滑回今天
-    LaunchedEffect(selected) {
-        val target = CENTER + ChronoUnit.DAYS.between(vm.baseDate, selected).toInt()
-        if (target in 0 until PAGES && pagerState.currentPage != target) {
-            pagerState.animateScrollToPage(target)
-        }
-    }
+    var dragX by remember { mutableStateOf(0f) }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -167,14 +142,31 @@ fun DayScreen(
             TextButton(onClick = { fx.select(); vm.goToToday() }) { Text("今天") }
         }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page ->
-            val date = vm.baseDate.plusDays((page - CENTER).toLong())
+        // 直接渲染选中日期（同样不用 Pager：页面在子组合里，日程列表会一直是空的）
+        // 左右滑动切换昨天 / 明天
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .pointerInput(selected) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (abs(dragX) > 60f) {
+                                val forward = dragX < 0f
+                                fx.page(forward)
+                                vm.select(selected.plusDays(if (forward) 1L else -1L))
+                            }
+                            dragX = 0f
+                        },
+                        onDragCancel = { dragX = 0f }
+                    ) { _, dragAmount ->
+                        dragX += dragAmount
+                    }
+                }
+        ) {
             DayPage(
-                date = date,
-                input = dayInput,
+                date = selected,
+                input = DayInput(settings, occurrences),
                 today = today,
                 onEditEvent = onEditEvent,
                 onToggleDone = { vm.toggleDone(it) }
@@ -182,6 +174,7 @@ fun DayScreen(
         }
     }
 }
+
 
 @Composable
 private fun DayPage(

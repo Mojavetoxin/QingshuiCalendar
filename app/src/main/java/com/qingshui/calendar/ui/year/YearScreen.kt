@@ -5,19 +5,17 @@ package com.qingshui.calendar.ui.year
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -25,15 +23,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,7 +47,7 @@ import com.qingshui.calendar.domain.model.EventOccurrence
 import com.qingshui.calendar.ui.components.LocalAppFeedback
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.temporal.ChronoUnit
+import kotlin.math.abs
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,9 +96,6 @@ class YearViewModel(private val c: AppContainer) : ViewModel() {
 
 // ---------------------------------------------------------------- 屏幕
 
-private const val PAGES = 24000
-private const val CENTER = 12000
-
 @Composable
 fun YearScreen(
     factory: ViewModelProvider.Factory,
@@ -109,32 +103,11 @@ fun YearScreen(
 ) {
     val vm: YearViewModel = viewModel(factory = factory)
     val year by vm.year.collectAsState()
-    // ★ 与月视图同样的坑：Pager 的页面在子组合里渲染，直接传"读出来的值"页面不会订阅状态，
-    //   迷你月里的日程红点就不会更新。持有 State、在页面内部才读，页面才会重组。
-    val settingsState = vm.settings.collectAsState()
-    val occurrencesState = vm.occurrences.collectAsState()
-
-    val pagerState = rememberPagerState(initialPage = CENTER, pageCount = { PAGES })
+    val settings by vm.settings.collectAsState()
+    val occurrences by vm.occurrences.collectAsState()
     val fx = LocalAppFeedback.current
 
-    val yearInput by remember {
-        derivedStateOf {
-            YearGridInput(
-                settings = settingsState.value,
-                occurrences = occurrencesState.value
-            )
-        }
-    }
-
-    LaunchedEffect(pagerState.currentPage) {
-        vm.setYear(vm.baseYear + (pagerState.currentPage - CENTER))
-    }
-    LaunchedEffect(year) {
-        val target = CENTER + (year - vm.baseYear)
-        if (target in 0 until PAGES && pagerState.currentPage != target) {
-            pagerState.animateScrollToPage(target)
-        }
-    }
+    var dragX by remember { mutableStateOf(0f) }
 
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -147,25 +120,47 @@ fun YearScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f)
             )
-            TextButton(onClick = { fx.page(false); vm.setYear(year - 1) }) { Text("‹", fontSize = 22.sp) }
+            TextButton(onClick = { fx.page(false); vm.setYear(year - 1) }) {
+                Text("‹", fontSize = 22.sp)
+            }
             TextButton(onClick = { fx.select(); vm.goToToday() }) { Text("今年") }
-            TextButton(onClick = { fx.page(true); vm.setYear(year + 1) }) { Text("›", fontSize = 22.sp) }
+            TextButton(onClick = { fx.page(true); vm.setYear(year + 1) }) {
+                Text("›", fontSize = 22.sp)
+            }
         }
 
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier.weight(1f).fillMaxWidth()
-        ) { page ->
-            val y = vm.baseYear + (page - CENTER)
+        // 直接渲染当前年份（不用 Pager：页面在子组合里不会随数据重组，迷你月的日程红点不会出现）
+        // 左右滑动切换年份
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .pointerInput(year) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (abs(dragX) > 60f) {
+                                val forward = dragX < 0f
+                                fx.page(forward)
+                                vm.setYear(if (forward) year + 1 else year - 1)
+                            }
+                            dragX = 0f
+                        },
+                        onDragCancel = { dragX = 0f }
+                    ) { _, dragAmount ->
+                        dragX += dragAmount
+                    }
+                }
+        ) {
             YearGrid(
-                year = y,
-                input = yearInput,
+                year = year,
+                input = YearGridInput(settings, occurrences),
                 today = LocalDate.now(),
                 onClickDay = onJumpToMonth
             )
         }
     }
 }
+
 
 @Composable
 private fun YearGrid(
@@ -302,9 +297,7 @@ private fun MiniMonth(
 }
 
 /**
- * 年视图网格的动态输入。理由同 [MonthGridInput]：
- * Pager 页面在子组合里渲染，捕获"值"不会订阅状态 → 必须由外部以 State 形式传入、页面内部读。
- */
+ * 年视图网格的动态输入（在 YearScreen 的普通组合里构造，天然随数据更新）。 */
 data class YearGridInput(
     val settings: AppSettings,
     val occurrences: Map<LocalDate, List<EventOccurrence>>
