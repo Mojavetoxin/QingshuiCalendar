@@ -59,6 +59,8 @@ REQUIRED = [
     "app/src/main/res/drawable/ic_launcher_background.xml",
     "app/src/main/res/drawable/ic_launcher_monochrome.xml",
     "app/src/main/java/com/qingshui/calendar/ui/components/Feedback.kt",
+    "app/src/main/java/com/qingshui/calendar/ui/components/SoundKit.kt",
+    "app/src/main/java/com/qingshui/calendar/ui/day/DayScreen.kt",
     "app/src/main/res/values/strings.xml",
 ]
 
