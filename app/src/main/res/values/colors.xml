@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 启动图标背景色：清水青 -->
-    <color name="ic_launcher_background">#FF2A9D8F</color>
+    <!-- 应用图标背景已改为矢量图 @drawable/ic_launcher_background（见 drawable/ic_launcher_background.xml），
+         下面这个颜色保留作深水色备用（也可给启动页/状态栏复用）。 -->
+    <color name="ic_launcher_background">#FF0E3350</color>
 </resources>
