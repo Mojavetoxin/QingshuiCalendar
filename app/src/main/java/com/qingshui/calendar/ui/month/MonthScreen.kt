@@ -211,7 +211,6 @@ fun MonthScreen(
         // 与系统/地图类 App 的习惯一致（下拉展、上滑收）。
         // 注意：zoomed=true 表示「周视图」，此时网格只留一行、格子变高，是「拉开」后的状态。
         // 高度要够装下 6 行 × 70dp + 星期表头（≈22dp），否则最后一行会被裁掉（圆点最容易先没）。
-        // 70dp 而非 66dp：格子内容固定 65dp（见 DateCell），留 5dp 余量最稳。
         val gridHeight by animateDpAsState(
             targetValue = if (zoomed) 150.dp else 444.dp,
             label = "gridHeight"
@@ -478,8 +477,12 @@ private fun DateCell(
     Column(
         modifier
             .clickable(onClick = onClick)
-            .padding(vertical = 2.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            // 内容整体在格子里**垂直居中**：行高 70dp、内容约 60dp，居中后上下各留 5dp，
+            // 观感比顶对齐更匀称（顶对齐会在下方空一大块）。
+            .fillMaxSize()
+            .padding(vertical = 3.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
         // 日号：今天/选中给「圆角方块」底（比圆形更接近系统日历的观感）
         val chipBg = when {
@@ -496,45 +499,40 @@ private fun DateCell(
         }
         Box(
             Modifier
-                .requiredSize(36.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .requiredSize(32.dp)
+                .clip(RoundedCornerShape(11.dp))
                 .background(chipBg),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 "${date.dayOfMonth}",
-                fontSize = 18.sp,
-                lineHeight = 20.sp,
+                fontSize = 17.sp,
+                lineHeight = 18.sp,
                 maxLines = 1,
                 softWrap = false,
                 fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = numberColor
             )
         }
-        // 农历 / 节气 / 节假日（字号从 8sp 提到 10.5sp）
-        // ★ 圆点不显示的真正元凶在这里：lineHeight 用 sp 会被系统「字体大小」倍率放大
-        //   （Android 的 sp = dp × fontScale）。用户手机把字体调大（小米常见 1.3×）后，
-        //   这行高度 12sp→15.6dp，把下面的圆点行挤出 66dp 的格子 —— 日期在、圆点永远不见。
-        //   解法：用**固定 dp 高度**的 Box 包住这行文字，文字再怎么被放大也撑不破外壳，
-        //   圆点行因此永远拿得到自己的 11dp。字号本身仍允许随系统缩放到 1.3×（不超过 14sp）。
-        Box(
-            Modifier.height(14.dp).fillMaxWidth(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                subText.ifEmpty { " " },
-                fontSize = 10.5.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                softWrap = false,
-                color = subColor
-            )
-        }
+        // 农历 / 节气 / 节假日。
+        // ★ 这里**不锁高度**（上一版用固定 14dp 外壳，结果字体放大时文字被外壳裁掉，
+        //   用户反馈"文字被截断"）。改为让文字自然高 + 收紧上下留白：
+        //   整个格子的高度预算 = 4(padding) + 32(日号) + 农历行 + 11(圆点)，
+        //   只要不超过行高（70dp）就不会裁字；fontScale ≤ 1.8 都安全（见 _layoutplan.py 实测）。
+        Text(
+            subText.ifEmpty { " " },
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            color = subColor
+        )
         // 固定高度的一行：周视图里显示当天首条日程标题，否则显示彩色圆点。
         // 无论有没有日程都占同样高度，翻月时不会跳。
         // 用 requiredHeight 而不是 height：保证这一行不被父级压缩成 0（圆点消失的元凶）。
         Box(
-            Modifier.requiredHeight(11.dp).fillMaxWidth(),
+            Modifier.height(11.dp).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
             if (detail && events.isNotEmpty()) {

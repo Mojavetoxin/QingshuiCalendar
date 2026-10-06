@@ -254,7 +254,7 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { localVol = 0f; vm.setSoundVolume(0) }) { Text("静音") }
-                TextButton(onClick = { localVol = 55f; vm.setSoundVolume(55) }) { Text("默认 55%") }
+                TextButton(onClick = { localVol = 40f; vm.setSoundVolume(40) }) { Text("默认 40%") }
                 TextButton(
                     onClick = { localVol = 100f; vm.setSoundVolume(100) }
                 ) { Text("最大") }

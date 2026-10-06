@@ -24,5 +24,5 @@ data class AppSettings(
     // —— 反馈（音效 + 触感）——
     val soundEnabled: Boolean = true,      // 点击音效
     val hapticEnabled: Boolean = true,     // 触感振动
-    val soundVolume: Int = 55              // 音效音量（0..100 百分比）。默认 55：比原来满音量安静一截
+    val soundVolume: Int = 40              // 音效音量（0..100 百分比）。默认 40：比原来满音量安静一截
 )

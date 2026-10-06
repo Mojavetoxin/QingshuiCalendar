@@ -148,7 +148,7 @@ val LocalAppFeedback = staticCompositionLocalOf<AppFeedback> { AppFeedback.Noop 
 
 /** 在 AppRoot 里建实例，随设置（开关 / 音量）自动重建 */
 @Composable
-fun rememberAppFeedback(soundOn: Boolean, hapticOn: Boolean, volume: Int = 55): AppFeedback {
+fun rememberAppFeedback(soundOn: Boolean, hapticOn: Boolean, volume: Int = 40): AppFeedback {
     val view = LocalView.current
     return remember(view, soundOn, hapticOn, volume) {
         ViewFeedback(view, soundOn, hapticOn, volume)

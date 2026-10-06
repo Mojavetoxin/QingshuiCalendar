@@ -53,7 +53,7 @@ class SettingsRepository(private val context: Context) {
             notifPermissionAsked = p[K.notifPermissionAsked] ?: false,
             soundEnabled = p[K.soundEnabled] ?: true,
             hapticEnabled = p[K.hapticEnabled] ?: true,
-            soundVolume = p[K.soundVolume] ?: 55
+            soundVolume = p[K.soundVolume] ?: 40
         )
     }
 
@@ -75,11 +75,11 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSoundVolume(v: Int) =
         context.dataStore.edit { it[K.soundVolume] = v.coerceIn(0, 100) }
 
-    /** 一键恢复默认：音效开、触感开、音量 55、默认提醒 15 分钟 */
+    /** 一键恢复默认：音效开、触感开、音量 40（与 AppSettings 默认值一致） */
     suspend fun resetFeedbackDefaults() = context.dataStore.edit {
         it[K.soundEnabled] = true
         it[K.hapticEnabled] = true
-        it[K.soundVolume] = 55
+        it[K.soundVolume] = 40
     }
 
     /** 文档导入相关设置一次写入 */
