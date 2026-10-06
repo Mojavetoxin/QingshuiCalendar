@@ -23,6 +23,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.roundToInt
 import com.qingshui.calendar.di.AppContainer
 import com.qingshui.calendar.domain.model.AppSettings
 import com.qingshui.calendar.domain.model.ReminderPresets
@@ -78,6 +80,12 @@ class SettingsViewModel(private val c: AppContainer) : ViewModel() {
     fun setSoundEnabled(v: Boolean) = viewModelScope.launch { c.settingsRepository.setSoundEnabled(v) }
 
     fun setHapticEnabled(v: Boolean) = viewModelScope.launch { c.settingsRepository.setHapticEnabled(v) }
+
+    /** 音效音量 0..100 */
+    fun setSoundVolume(v: Int) = viewModelScope.launch { c.settingsRepository.setSoundVolume(v) }
+
+    /** 一键把音效/触感/音量恢复默认 */
+    fun resetFeedback() = viewModelScope.launch { c.settingsRepository.resetFeedbackDefaults() }
 
     /** 导出全部日程到用户指定的 JSON 文件 */
     fun export(uri: Uri) = viewModelScope.launch {
@@ -222,10 +230,41 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
             onChange = { vm.setHapticEnabled(it) },
             subtitle = "轻点、确认、删除时的手感振动"
         )
-        // 试听：四档手感各不相同，点一下就能听出差别
+
+        // ── 音效音量：拖一下即时生效，松手后落盘 ──
+        // 拖动过程中用本地 state 显示（不被 DataStore 回写打断手感），onValueChangeFinished 才持久化。
+        var localVol by remember(s.soundVolume) { mutableStateOf(s.soundVolume.toFloat()) }
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("音效音量", style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "${localVol.roundToInt()}%",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+            Slider(
+                value = localVol,
+                onValueChange = { localVol = it },
+                onValueChangeFinished = { vm.setSoundVolume(localVol.roundToInt()) },
+                valueRange = 0f..100f,
+                enabled = s.soundEnabled
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { localVol = 0f; vm.setSoundVolume(0) }) { Text("静音") }
+                TextButton(onClick = { localVol = 55f; vm.setSoundVolume(55) }) { Text("默认 55%") }
+                TextButton(
+                    onClick = { localVol = 100f; vm.setSoundVolume(100) }
+                ) { Text("最大") }
+            }
+        }
+
+        // 试听：五档手感各不相同，点一下就能听出差别（音量按上面的滑块来）
         Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
             Text(
-                "试听（四档手感各不相同）",
+                "试听（五档手感各不相同，音量按上面的滑块）",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -238,9 +277,22 @@ fun SettingsScreen(factory: ViewModelProvider.Factory) {
                 AssistChip(onClick = { fx.error() }, label = { Text("失败") })
             }
         }
+
+        // 一键恢复：音效开 + 触感开 + 音量 55%，嫌吵或调乱了点这个
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { fx.select(); vm.resetFeedback() },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("重置音效与触感") }
+        }
+
         Text(
             "音效用内置合成音，不依赖系统的「触摸提示音」开关；触感则仍由系统「触感反馈」控制。" +
-                "开关彼此独立：只关振动时声音照常。",
+                "开关彼此独立：只关振动时声音照常。音量调到 100% 以下时会走内置合成音（系统触摸音无法单独调音量），" +
+                "这样滑块才真正起作用。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)

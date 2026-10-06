@@ -32,6 +32,7 @@ class SettingsRepository(private val context: Context) {
         val notifPermissionAsked = booleanPreferencesKey("notif_permission_asked")
         val soundEnabled = booleanPreferencesKey("sound_enabled")
         val hapticEnabled = booleanPreferencesKey("haptic_enabled")
+        val soundVolume = intPreferencesKey("sound_volume")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -51,7 +52,8 @@ class SettingsRepository(private val context: Context) {
             docMinute = p[K.docMinute] ?: 30,
             notifPermissionAsked = p[K.notifPermissionAsked] ?: false,
             soundEnabled = p[K.soundEnabled] ?: true,
-            hapticEnabled = p[K.hapticEnabled] ?: true
+            hapticEnabled = p[K.hapticEnabled] ?: true,
+            soundVolume = p[K.soundVolume] ?: 55
         )
     }
 
@@ -68,6 +70,17 @@ class SettingsRepository(private val context: Context) {
     suspend fun setSoundEnabled(v: Boolean) = context.dataStore.edit { it[K.soundEnabled] = v }
 
     suspend fun setHapticEnabled(v: Boolean) = context.dataStore.edit { it[K.hapticEnabled] = v }
+
+    /** 音效音量（0..100），越界自动夹紧 */
+    suspend fun setSoundVolume(v: Int) =
+        context.dataStore.edit { it[K.soundVolume] = v.coerceIn(0, 100) }
+
+    /** 一键恢复默认：音效开、触感开、音量 55、默认提醒 15 分钟 */
+    suspend fun resetFeedbackDefaults() = context.dataStore.edit {
+        it[K.soundEnabled] = true
+        it[K.hapticEnabled] = true
+        it[K.soundVolume] = 55
+    }
 
     /** 文档导入相关设置一次写入 */
     suspend fun setDocImport(enabled: Boolean, uri: String, name: String) =

@@ -87,7 +87,8 @@ interface AppFeedback {
 private class ViewFeedback(
     private val view: View,
     private val soundOn: Boolean,
-    private val hapticOn: Boolean
+    private val hapticOn: Boolean,
+    private val volume: Int
 ) : AppFeedback {
 
     private var lastAt = 0L
@@ -97,19 +98,19 @@ private class ViewFeedback(
         if (kind == Fx.WARN || kind == Fx.ERROR) {
             lastAt = SystemClock.uptimeMillis()
             if (hapticOn) view.performHapticFeedback(hapticConstant(kind))
-            if (soundOn) SoundKit.play(view, kind)
+            if (soundOn) SoundKit.play(view, kind, volume)
             return
         }
         if (!soundOn && !hapticOn) return
         if (!allow()) return
         if (hapticOn) view.performHapticFeedback(hapticConstant(kind))
-        if (soundOn) SoundKit.play(view, kind)
+        if (soundOn) SoundKit.play(view, kind, volume)
     }
 
     override fun page(forward: Boolean) {
         if (!soundOn && !hapticOn) return
         if (!allow()) return
-        if (soundOn) SoundKit.playPage(view, forward)
+        if (soundOn) SoundKit.playPage(view, forward, volume)
         if (hapticOn) view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
     }
 
@@ -145,9 +146,11 @@ private class ViewFeedback(
  */
 val LocalAppFeedback = staticCompositionLocalOf<AppFeedback> { AppFeedback.Noop }
 
-/** 在 AppRoot 里建实例，随设置开关自动重建 */
+/** 在 AppRoot 里建实例，随设置（开关 / 音量）自动重建 */
 @Composable
-fun rememberAppFeedback(soundOn: Boolean, hapticOn: Boolean): AppFeedback {
+fun rememberAppFeedback(soundOn: Boolean, hapticOn: Boolean, volume: Int = 55): AppFeedback {
     val view = LocalView.current
-    return remember(view, soundOn, hapticOn) { ViewFeedback(view, soundOn, hapticOn) }
+    return remember(view, soundOn, hapticOn, volume) {
+        ViewFeedback(view, soundOn, hapticOn, volume)
+    }
 }

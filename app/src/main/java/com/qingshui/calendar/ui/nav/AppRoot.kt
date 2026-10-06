@@ -90,7 +90,11 @@ private val TABS = listOf(
 fun AppRoot(c: AppContainer) {
     // 反馈总开关随设置变化，关掉后完全不调用系统音效/触感接口
     val settings by c.settingsRepository.settings.collectAsState(initial = AppSettings())
-    val feedback = rememberAppFeedback(settings.soundEnabled, settings.hapticEnabled)
+    val feedback = rememberAppFeedback(
+        settings.soundEnabled,
+        settings.hapticEnabled,
+        settings.soundVolume
+    )
     CompositionLocalProvider(LocalAppFeedback provides feedback) {
         AppScaffold(c)
     }

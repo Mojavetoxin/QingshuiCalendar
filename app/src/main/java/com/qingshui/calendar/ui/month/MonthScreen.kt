@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -208,8 +210,10 @@ fun MonthScreen(
         // 手势：左右横滑翻月（>60dp）；竖向**下滑 = 拉开（进入周视图），上滑 = 收起（回到整月）**，
         // 与系统/地图类 App 的习惯一致（下拉展、上滑收）。
         // 注意：zoomed=true 表示「周视图」，此时网格只留一行、格子变高，是「拉开」后的状态。
+        // 高度要够装下 6 行 × 70dp + 星期表头（≈22dp），否则最后一行会被裁掉（圆点最容易先没）。
+        // 70dp 而非 66dp：格子内容固定 65dp（见 DateCell），留 5dp 余量最稳。
         val gridHeight by animateDpAsState(
-            targetValue = if (zoomed) 134.dp else 400.dp,
+            targetValue = if (zoomed) 150.dp else 444.dp,
             label = "gridHeight"
         )
         Box(
@@ -404,8 +408,9 @@ fun MonthGrid(
             }
         }
         // 6 行 x 7 列（周视图只渲染一行，行高更大并显示当天日程标题）
+        // 70dp 行高：格子内容固定 65dp（36 日号 + 14 农历 + 11 圆点 + 4 内边距），留 5dp 余量。
         weeks.forEach { week ->
-            Row(Modifier.fillMaxWidth().height(if (weekOnly) 104.dp else 62.dp)) {
+            Row(Modifier.fillMaxWidth().height(if (weekOnly) 108.dp else 70.dp)) {
                 if (settings.showWeekNumber) {
                     Text(
                         "${CalendarUtils.weekNumber(week.first(), wsMonday)}",
@@ -491,7 +496,7 @@ private fun DateCell(
         }
         Box(
             Modifier
-                .size(36.dp)
+                .requiredSize(36.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(chipBg),
             contentAlignment = Alignment.Center
@@ -499,22 +504,37 @@ private fun DateCell(
             Text(
                 "${date.dayOfMonth}",
                 fontSize = 18.sp,
+                lineHeight = 20.sp,
+                maxLines = 1,
+                softWrap = false,
                 fontWeight = if (isToday || isSelected) FontWeight.Bold else FontWeight.Medium,
                 color = numberColor
             )
         }
         // 农历 / 节气 / 节假日（字号从 8sp 提到 10.5sp）
-        Text(
-            subText.ifEmpty { " " },
-            fontSize = 10.5.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            color = subColor
-        )
+        // ★ 圆点不显示的真正元凶在这里：lineHeight 用 sp 会被系统「字体大小」倍率放大
+        //   （Android 的 sp = dp × fontScale）。用户手机把字体调大（小米常见 1.3×）后，
+        //   这行高度 12sp→15.6dp，把下面的圆点行挤出 66dp 的格子 —— 日期在、圆点永远不见。
+        //   解法：用**固定 dp 高度**的 Box 包住这行文字，文字再怎么被放大也撑不破外壳，
+        //   圆点行因此永远拿得到自己的 11dp。字号本身仍允许随系统缩放到 1.3×（不超过 14sp）。
+        Box(
+            Modifier.height(14.dp).fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                subText.ifEmpty { " " },
+                fontSize = 10.5.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
+                color = subColor
+            )
+        }
         // 固定高度的一行：周视图里显示当天首条日程标题，否则显示彩色圆点。
         // 无论有没有日程都占同样高度，翻月时不会跳。
+        // 用 requiredHeight 而不是 height：保证这一行不被父级压缩成 0（圆点消失的元凶）。
         Box(
-            Modifier.height(10.dp).fillMaxWidth(),
+            Modifier.requiredHeight(11.dp).fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
             if (detail && events.isNotEmpty()) {
@@ -533,7 +553,7 @@ private fun DateCell(
                         dots.forEach { o ->
                             Box(
                                 Modifier
-                                    .size(6.dp)
+                                    .requiredSize(7.dp)
                                     .clip(CircleShape)
                                     .background(
                                         androidx.compose.ui.graphics.Color(

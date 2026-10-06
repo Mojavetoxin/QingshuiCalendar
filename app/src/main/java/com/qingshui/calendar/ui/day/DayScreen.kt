@@ -78,11 +78,24 @@ import kotlinx.coroutines.launch
 /** 单日视图的数据窗口（左右各 ±180 天，横滑够用） */
 private const val WINDOW_DAYS = 180L
 
-/** 相邻卡片在屏幕边缘露出的宽度（"侧边虚影"） */
-private val PEEK = 22.dp
+/**
+ * 相邻卡片在屏幕边缘露出的宽度（"侧边虚影"）。
+ * ★ 这个值直接决定两侧邻居「看得见多少」：邻居可见宽 ≈ PEEK − GAP − (卡宽 × (1−scale)/2)。
+ *   实测 34dp + scale 0.94 时只剩 ~12dp，几乎就是一条线；提到 42dp 后约 20dp，明显是"一张卡"。
+ */
+private val PEEK = 42.dp
 
-/** 卡片之间的水平间距 */
+/** 卡片之间的水平间距（配合 PEEK 调：gap 越大，邻居露出的净宽越小） */
 private val CARD_GAP = 10.dp
+
+/** 非中心卡片的缩放（越小越"退后"）。0.92 = 一眼看出比中间小，但仍认得出是卡片 */
+private const val SIDE_SCALE = 0.92f
+
+/**
+ * 非中心卡片的透明度。0.42 太淡、几乎看不见；0.62 是"虚影"与"看得见"的平衡点。
+ * 注意：缩放会让邻居边缘向内收，所以 scale 与 PEEK 要一起调大，否则越缩越看不见。
+ */
+private const val SIDE_ALPHA = 0.62f
 
 /**
  * 日视图 ViewModel：以"今天"为基准展开一段日期窗口的日程，横滑切换昨天/明天。
@@ -322,13 +335,15 @@ private fun DayCard(
             // 子项再 fillMaxHeight() 会绕成死循环；放进 verticalScroll 还会直接抛异常）
             .height(height)
             .graphicsLayer {
-                alpha = if (isCenter) 1f else 0.42f
-                val s = if (isCenter) 1f else 0.955f
+                alpha = if (isCenter) 1f else SIDE_ALPHA
+                val s = if (isCenter) 1f else SIDE_SCALE
                 scaleX = s
                 scaleY = s
             }
             .then(
-                if (isCenter) Modifier.shadow(10.dp, shape, clip = false) else Modifier
+                // 中心卡：明显投影（"浮"起来）；侧卡：浅浅一层投影，让它读起来仍是"卡片"而非色块
+                if (isCenter) Modifier.shadow(10.dp, shape, clip = false)
+                else Modifier.shadow(4.dp, shape, clip = false)
             )
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)

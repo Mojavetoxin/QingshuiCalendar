@@ -44,20 +44,30 @@ internal object SoundKit {
         Handler(t.looper)
     }
 
-    /** 已合成 PCM 缓存：同一音效只算一次 */
+    /** 已合成 PCM 缓存：同一音效只算一次（**按满音量归一化**存放，播放在 [playPcm] 里再乘音量） */
     private val cache = ConcurrentHashMap<Fx, ShortArray>()
 
-    fun play(view: View, kind: Fx) {
-        if (systemTouchSoundOn(view.context)) {
+    /**
+     * @param volume 音量百分比 0..100（界面上的「音效音量」）。0 = 静音。
+     *
+     * 系统触摸音开着时走 `playSoundEffect` —— 那条路**没法单独调音量**（受系统音量控制），
+     * 所以只有音量被调低（<100）时才强制走内置合成音，这样滑块才真正起作用。
+     */
+    fun play(view: View, kind: Fx, volume: Int) {
+        val v = volume.coerceIn(0, 100)
+        if (v <= 0) return
+        if (v >= 100 && systemTouchSoundOn(view.context)) {
             view.playSoundEffect(SoundEffectConstants.CLICK)
         } else {
-            synth(kind)
+            synth(kind, v)
         }
     }
 
     /** 翻页：左右方向用不同的音（Android 13+ 有公开的方向音常量；合成音用方向滑音） */
-    fun playPage(view: View, forward: Boolean) {
-        if (systemTouchSoundOn(view.context)) {
+    fun playPage(view: View, forward: Boolean, volume: Int) {
+        val v = volume.coerceIn(0, 100)
+        if (v <= 0) return
+        if (v >= 100 && systemTouchSoundOn(view.context)) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 view.playSoundEffect(
                     if (forward) SoundEffectConstants.NAVIGATION_RIGHT
@@ -67,7 +77,7 @@ internal object SoundKit {
                 view.playSoundEffect(SoundEffectConstants.CLICK)
             }
         } else {
-            synth(if (forward) Fx.SLIDE_FWD else Fx.SLIDE_BACK)
+            synth(if (forward) Fx.SLIDE_FWD else Fx.SLIDE_BACK, v)
         }
     }
 
@@ -151,9 +161,9 @@ internal object SoundKit {
         Fx.SLIDE_BACK -> listOf(Note(1300.0, 84, 0.28, sweepTo = 760.0, bright = 0.16))
     }
 
-    private fun synth(kind: Fx) {
+    private fun synth(kind: Fx, volume: Int) {
         val pcm = cache[kind] ?: render(score(kind)).also { cache[kind] = it }
-        worker.post { playPcm(pcm) }
+        worker.post { playPcm(pcm, volume) }
     }
 
     /**
@@ -191,7 +201,13 @@ internal object SoundKit {
      * 走 `USAGE_ASSISTANCE_SONIFICATION`（系统 UI 音轨）：不受媒体音量影响，也不会打断音乐。
      * `MODE_STATIC` + marker 回调，播完自动 release，避免泄漏。
      */
-    private fun playPcm(pcm: ShortArray) {
+    private fun playPcm(base: ShortArray, volume: Int) {
+        // 音量在这里统一施加：缓存里存的是满音量 PCM，改音量不必重新合成。
+        // 用平方曲线（v*v）更接近听感 —— 线性刻度在小音量区几乎听不出变化。
+        val g = (volume.coerceIn(0, 100) / 100.0).let { it * it }
+        val pcm = if (g >= 1.0) base else ShortArray(base.size) { i ->
+            (base[i] * g).toInt().coerceIn(-32768, 32767).toShort()
+        }
         var track: AudioTrack? = null
         try {
             val t = AudioTrack.Builder()
